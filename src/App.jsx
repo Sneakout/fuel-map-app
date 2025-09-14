@@ -8,6 +8,7 @@ import "leaflet/dist/leaflet.css";
 const STORAGE_KEY = "fuelmap_records_v4";
 
 /* ---------- global styles to ensure full-height map and tooltip layout ---------- */
+
 if (typeof document !== "undefined") {
   const id = "fuel-map-global-style-v4";
   if (!document.getElementById(id)) {
@@ -18,10 +19,23 @@ if (typeof document !== "undefined") {
       .leaflet-container { height: 100% !important; width: 100% !important; }
       .tooltip-grid { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; }
       .tooltip-metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+      @keyframes fadeInScale {
+        from { opacity: 0; transform: scale(0.9); }
+        to   { opacity: 1; transform: scale(1); }
+      }
+
+      @keyframes pulseGlow {
+        0% { transform: scale(0.9); opacity: 0.7; }
+        50% { transform: scale(1.1); opacity: 1; }
+        100% { transform: scale(0.9); opacity: 0.7; }
+      }
     `;
     document.head.appendChild(s);
   }
 }
+
+
 
 /* ---------- helpers ---------- */
 function loadRecords() {
@@ -271,49 +285,105 @@ export default function FuelMapApp() {
       }
     }
 
-    const id = setInterval(checkAndUpdate, intervalMs);
-    // also run once shortly after mount to pick up any warm changes
-    const t = setTimeout(checkAndUpdate, 2000);
-    return () => { canceled = true; clearInterval(id); clearTimeout(t); };
-  }, []);
+      const id = setInterval(checkAndUpdate, intervalMs);
+      // also run once shortly after mount to pick up any warm changes
+      const t = setTimeout(checkAndUpdate, 2000);
+      return () => { canceled = true; clearInterval(id); clearTimeout(t); };
+    }, []);
+
+    return (
+      <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+        <div style={{ width: '50%', minWidth: '20%', maxWidth: '80%', display: 'flex', flexDirection: 'column', height: '100vh' }}>
+          <div style={{ flex: 1 }}>
+            <MapContainer whenCreated={map => { mapRef.current = map; map.invalidateSize(); }} center={center} zoom={13} style={{ height: '100%', width: '100%' }}>
+              <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
+  {stations.map(st => {
+  if (!st.lat || !st.lng || isNaN(st.lat) || isNaN(st.lng)) return null;
+  const cmp = (st.company || '').toString().replace(/\s+/g, '').toUpperCase();
+  const baseIcon = iconsMap[cmp] ? iconsMap[cmp] : fallbackIcon(st.company);
+
+  const isInSelectedArea =
+    selected && st.trading_area_norm === selected.trading_area_norm;
+
+  // 🔹 If in selected area → create a highlighted icon
+  const icon = isInSelectedArea
+    ? L.divIcon({
+        html: `<div style="
+            position: relative;
+            width: 46px; height: 46px;
+            display: flex; align-items: center; justify-content: center;
+          ">
+            <div style="
+              position: absolute; width: 46px; height: 46px;
+              border-radius: 50%;
+              background: rgba(59,130,246,0.25);
+              box-shadow: 0 0 12px rgba(59,130,246,0.6);
+              animation: pulseGlow 1.5s infinite;
+            "></div>
+            <img src="/logos/${cmp}.svg" style="width: 36px; height: 36px;" />
+          </div>`,
+        className: "",
+        iconSize: [46, 46],
+        iconAnchor: [23, 46],
+        popupAnchor: [0, -46],
+      })
+    : baseIcon;
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-      <div style={{ width: '50%', minWidth: '20%', maxWidth: '80%', display: 'flex', flexDirection: 'column', height: '100vh' }}>
-        <div style={{ flex: 1 }}>
-          <MapContainer whenCreated={map => { mapRef.current = map; map.invalidateSize(); }} center={center} zoom={13} style={{ height: '100%', width: '100%' }}>
-            <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
+    <Marker
+      key={st.id}
+      position={[st.lat, st.lng]}
+      icon={icon}
+      eventHandlers={{
+        click: () =>
+          setSelected({
+            ...st,
+            trading_area_norm:
+              st.trading_area_norm || (st.trading_area || '').toLowerCase(),
+          }),
+      }}
+    >
+<Tooltip direction="top" offset={[0, -10]} opacity={1} className="my-tooltip">
+  <div style={{ minWidth: 220 }}>
+    <div style={{ fontWeight: 700, fontSize: 13 }}>{st.name}</div>
+    <div style={{ color: "#64748B", marginTop: 2 }}>
+      {st.company} • {st.trading_area}
+    </div>
 
-            {stations.map(st => {
-              if (!st.lat || !st.lng || isNaN(st.lat) || isNaN(st.lng)) return null;
-              const cmp = (st.company || '').toString().replace(/\s+/g, '').toUpperCase();
-              const icon = iconsMap[cmp] ? iconsMap[cmp] : fallbackIcon(st.company);
-              return (
-                <Marker key={st.id} position={[st.lat, st.lng]} icon={icon} eventHandlers={{ click: () => setSelected({ ...st, trading_area_norm: st.trading_area_norm || (st.trading_area || '').toLowerCase() }) }}>
-                  <Tooltip direction='top' offset={[0, -10]} opacity={1} className='my-tooltip'>
-                    <div style={{ minWidth: 260 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{st.name}</div>
-                      <div style={{ color: '#64748B', marginTop: 4 }}>{st.company} • {st.trading_area}</div>
-                      <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                        <div>
-                          <div style={{ fontSize: 11, color: '#94A3B8' }}>MS</div>
-                          <div style={{ fontWeight: 700 }}>{st.ms.toLocaleString()}</div>
-                          <div style={{ marginTop: 6 }}><PercentBadge value={calcGrowth(st.ms, st.ms_ly)} /></div>
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 11, color: '#94A3B8' }}>HSD</div>
-                          <div style={{ fontWeight: 700 }}>{st.hsd.toLocaleString()}</div>
-                          <div style={{ marginTop: 6 }}><PercentBadge value={calcGrowth(st.hsd, st.hsd_ly)} /></div>
-                        </div>
-                      </div>
-                    </div>
-                  </Tooltip>
-                </Marker>
-              );
-            })}
-          </MapContainer>
-        </div>
+    <div
+      style={{
+        marginTop: 8,
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 12,
+        textAlign: "center", // central alignment
+      }}
+    >
+      {/* MS */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ fontSize: 11, color: "#94A3B8" }}>MS</div>
+        <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.ms.toLocaleString()}</div>
+        <PercentBadge value={calcGrowth(st.ms, st.ms_ly)} />
       </div>
+
+      {/* HSD */}
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div style={{ fontSize: 11, color: "#94A3B8" }}>HSD</div>
+        <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.hsd.toLocaleString()}</div>
+        <PercentBadge value={calcGrowth(st.hsd, st.hsd_ly)} />
+      </div>
+    </div>
+  </div>
+</Tooltip>
+
+    </Marker>
+  );
+})}
+
+
+            </MapContainer>
+          </div>
+        </div>
 
       <aside style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
         <div style={{ padding: 16 }}>
