@@ -387,7 +387,7 @@ export default function FuelMapApp() {
 
       <aside style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
         <div style={{ padding: 16 }}>
-          {!selected ? <div style={{ color: '#475569' }}>Click a Retail Outlet</div> : (
+          {!selected ? <div style={{ color: '#475569' }}>Select a Retail Outlet</div> : (
             <div>
               <h2 style={{ margin: 0 }}>{selected.name}</h2>
               <div style={{ color: '#64748B', marginTop: 6 }}>{selected.company} • {selected.trading_area}</div>
