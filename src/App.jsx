@@ -96,6 +96,47 @@ function ShareChange({ value }) {
   );
 }
 
+// small helper to build sorted unique months (descending)
+function uniqueSortedMonths(records) {
+  const s = new Set(records.map(r => (r.month || '').toString().trim()).filter(Boolean));
+  // convert to array and sort descending (newest first)
+  return Array.from(s).sort((a,b) => (a > b ? -1 : a < b ? 1 : 0));
+}
+
+function MonthSelector({ records, value, onChange }) {
+  const months = uniqueSortedMonths(records);
+  if (!months.length) return null;
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <label style={{ color: '#475569', fontSize: 13, minWidth: 70 }}>Month</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: '6px 10px',
+          borderRadius: 6,
+          border: '1px solid #E6EEF3',
+          background: '#fff',
+          fontSize: 13
+        }}
+      >
+        {months.map(m => (
+          <option key={m} value={m}>
+            { /* human friendly label: "Apr 2025" */ }
+            {(() => {
+              const [y, mm] = m.split('-');
+              if (!y || !mm) return m;
+              const d = new Date(Number(y), Number(mm)-1);
+              return d.toLocaleString('default', { month: 'short', year: 'numeric' });
+            })()}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+
 /* ---------- main app ---------- */
 export default function FuelMapApp() {
   const [records, setRecords] = useState(() => loadRecords());
@@ -140,6 +181,18 @@ export default function FuelMapApp() {
     setStations(st);
     saveRecords(records);
   }, [records, latestMonth]);
+
+// keep `selected` in sync when month or stations change
+useEffect(() => {
+  if (!selected) return;
+  // stations is rebuilt based on latestMonth already
+  const refreshed = stations.find(s => s.id === selected.id || s.outlet_id === selected.outlet_id);
+  if (refreshed) {
+    // preserve trading_area_norm if present
+    setSelected(prev => ({ ...refreshed, trading_area_norm: refreshed.trading_area_norm || (refreshed.trading_area || '').toLowerCase() }));
+  }
+}, [latestMonth, stations]); // run when month changes or stations re-calc
+
 
   // Startup: load public CSV if localStorage empty
   useEffect(() => {
@@ -391,7 +444,17 @@ export default function FuelMapApp() {
             <div>
               <h2 style={{ margin: 0 }}>{selected.name}</h2>
               <div style={{ color: '#64748B', marginTop: 6 }}>{selected.company} • {selected.trading_area}</div>
-              <div style={{ marginTop: 8, color: '#64748B' }}>{formatMonth(selected.month)}</div>
+              {/* --- Month selector (shows all months found in CSV) --- */}
+<div style={{ marginTop: 8 }}>
+  {/* build months list from records (sorted descending) */}
+  {/** assume `records` is in scope in this component **/}
+  <MonthSelector
+    records={records}
+    value={latestMonth}
+    onChange={(m) => setLatestMonth(m)}
+  />
+</div>
+
 
               {/* Details grid */}
               <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
