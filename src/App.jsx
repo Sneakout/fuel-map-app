@@ -38,6 +38,18 @@ if (typeof document !== "undefined") {
 
 
 /* ---------- helpers ---------- */
+// helper to produce a stable key for an outlet row/object
+function outletKeyForRow(r) {
+  if (!r) return "";
+  if (r.outlet_id || r.id) return String(r.outlet_id || r.id);
+  const name = (r.name || "").toString().trim().toLowerCase();
+  const lat = Number(r.lat || 0);
+  const lng = Number(r.lng || 0);
+  const latr = Math.round(lat * 1e5) / 1e5;
+  const lngr = Math.round(lng * 1e5) / 1e5;
+  return `${name}::${latr}::${lngr}`;
+}
+
 function loadRecords() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -181,6 +193,32 @@ export default function FuelMapApp() {
     setStations(st);
     saveRecords(records);
   }, [records, latestMonth]);
+
+  // ✅ NEW EFFECT: keep selected RO pinned but refresh its month-specific values
+  useEffect(() => {
+    if (!selected) return;
+    if (!stations || stations.length === 0) return;
+
+    const selectedKey = outletKeyForRow(selected);
+    const match = stations.find(s => outletKeyForRow(s) === selectedKey);
+
+    if (!match) return;
+
+    setSelected(prev => {
+      if (!prev) return { ...match, trading_area_norm: match.trading_area_norm || (match.trading_area || '').toLowerCase() };
+      return {
+        ...prev,
+        month: match.month ?? prev.month,
+        ms: typeof match.ms === 'number' ? match.ms : prev.ms,
+        ms_ly: typeof match.ms_ly === 'number' ? match.ms_ly : prev.ms_ly,
+        hsd: typeof match.hsd === 'number' ? match.hsd : prev.hsd,
+        hsd_ly: typeof match.hsd_ly === 'number' ? match.hsd_ly : prev.hsd_ly,
+        lat: (match.lat || match.lat === 0) ? match.lat : prev.lat,
+        lng: (match.lng || match.lng === 0) ? match.lng : prev.lng,
+        trading_area_norm: prev.trading_area_norm || match.trading_area_norm || (match.trading_area || '').toLowerCase(),
+      };
+    });
+  }, [latestMonth, stations]);
 
   // Startup: load public CSV if localStorage empty
   useEffect(() => {
