@@ -182,18 +182,6 @@ export default function FuelMapApp() {
     saveRecords(records);
   }, [records, latestMonth]);
 
-// keep `selected` in sync when month or stations change
-useEffect(() => {
-  if (!selected) return;
-  // stations is rebuilt based on latestMonth already
-  const refreshed = stations.find(s => s.id === selected.id || s.outlet_id === selected.outlet_id);
-  if (refreshed) {
-    // preserve trading_area_norm if present
-    setSelected(prev => ({ ...refreshed, trading_area_norm: refreshed.trading_area_norm || (refreshed.trading_area || '').toLowerCase() }));
-  }
-}, [latestMonth, stations]); // run when month changes or stations re-calc
-
-
   // Startup: load public CSV if localStorage empty
   useEffect(() => {
     async function initFromPublicCsv() {
