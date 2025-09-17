@@ -30,6 +30,16 @@ if (typeof document !== "undefined") {
         50% { transform: scale(1.1); opacity: 1; }
         100% { transform: scale(0.9); opacity: 0.7; }
       }
+        /* Cumulative toggle button */
+.cum-toggle {
+  display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; border:1px solid rgba(14,165,233,0.12);
+  background: #fff; cursor:pointer; transition: transform .14s ease, box-shadow .14s ease;
+}
+.cum-toggle:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(14,165,233,0.12); }
+.cum-toggle.active { background: linear-gradient(90deg,#EEF2FF,#F0F9FF); border-color: rgba(59,130,246,0.3); box-shadow: 0 6px 18px rgba(59,130,246,0.12); }
+.cum-toggle .arrow { transition: transform .22s ease; }
+.cum-toggle.active .arrow { transform: rotate(180deg); }
+
     `;
     document.head.appendChild(s);
   }
@@ -146,6 +156,58 @@ function MonthSelector({ records, value, onChange }) {
       </select>
     </div>
   );
+}
+
+// parse YYYY-MM to a comparable number (YYYY*12 + month) for easy month-range checks
+function monthToken(monthStr) {
+  if (!monthStr) return -Infinity;
+  const [y, m] = monthStr.split('-').map(Number);
+  if (!y || !m) return -Infinity;
+  return y * 12 + (m - 1);
+}
+
+// inclusive check if monthStr is between start (YYYY-MM) and end (YYYY-MM)
+function monthInRange(monthStr, startStr, endStr) {
+  const t = monthToken(monthStr);
+  return t >= monthToken(startStr) && t <= monthToken(endStr);
+}
+
+// compute cumulative sums for an outlet rows array between startMonth and endMonth (both YYYY-MM inclusive)
+function cumulativeForOutletRows(rows, startMonth, endMonth) {
+  const sum = { ms: 0, hsd: 0, ms_ly: 0, hsd_ly: 0 };
+  rows.forEach(r => {
+    const m = (r.month || '').toString();
+    if (monthInRange(m, startMonth, endMonth)) {
+      sum.ms += Number(r.ms || 0);
+      sum.hsd += Number(r.hsd || 0);
+      sum.ms_ly += Number(r.ms_ly || 0);
+      sum.hsd_ly += Number(r.hsd_ly || 0);
+    }
+  });
+  return sum;
+}
+
+// compute cumulative market share for a trading area (array of outlet aggregated station objects)
+// expects each station to have rows[] (all months)
+function computeCumulativeMarketShareForArea(outlets, startMonth, endMonth) {
+  const totals = {};
+  outlets.forEach(o => {
+    const key = (o.company || 'PVT').toString().toUpperCase();
+    if (!totals[key]) totals[key] = { ms: 0, ms_ly: 0 };
+    const c = cumulativeForOutletRows(o.rows || [], startMonth, endMonth);
+    totals[key].ms += c.ms;
+    totals[key].ms_ly += c.ms_ly;
+  });
+  const total_ms = Object.values(totals).reduce((s, c) => s + c.ms, 0);
+  const total_ms_ly = Object.values(totals).reduce((s, c) => s + c.ms_ly, 0);
+  return Object.entries(totals).map(([company, vals]) => ({
+    company,
+    ms: vals.ms,
+    ms_ly: vals.ms_ly,
+    share: total_ms ? (vals.ms / total_ms * 100) : 0,
+    share_ly: total_ms_ly ? (vals.ms_ly / total_ms_ly * 100) : 0,
+    share_change: (total_ms && total_ms_ly) ? ((vals.ms / total_ms * 100) - (vals.ms_ly / total_ms_ly * 100)) : 0
+  })).sort((a,b)=>b.share - a.share);
 }
 
 
