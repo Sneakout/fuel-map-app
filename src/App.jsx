@@ -645,7 +645,7 @@ const cumulativeSums = useMemo(() => {
               {/* Trading Area - Outlets */}
               <div style={{ marginTop: 20 }}>
   <h3 style={{ margin: '0 0 8px 0', display: "flex", alignItems: "center", gap: 6 }}>
-  Trading Area — Outlets
+  Trading Area - Outlets
   <AnimatePresence mode="wait">
     {pageIndex === 1 ? (
       <motion.span
@@ -734,7 +734,7 @@ const cumulativeSums = useMemo(() => {
 
               {/* Trading Area - Market Share */}
               <div style={{ marginTop: 20 }}>
-                <h3 style={{ margin: '0 0 8px 0' }}>Trading Area — Market Share</h3>
+                <h3 style={{ margin: '0 0 8px 0' }}>Trading Area - Market Share</h3>
                 <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
                   <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                     <thead style={{ color: '#94A3B8', textAlign: 'left' }}>

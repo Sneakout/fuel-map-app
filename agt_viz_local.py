@@ -1,3 +1,4 @@
+import os
 def pick_area_month(results, area=None, month=None):
     """
     Robust selection of area and month from agt_results.json.
