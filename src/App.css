@@ -27,6 +27,44 @@
 /* subtle indicator when active */
 .nav-btn.primary { box-shadow: 0 6px 18px rgba(30,58,138,0.12); }
 
+/* ===== transition for details panel & tables ===== */
+.selected-panel {
+  position: relative;
+  will-change: transform, opacity;
+}
+.selected-panel .panel-inner {
+  border-radius: 8px;
+  background: transparent;
+  /* initial static state */
+  opacity: 1;
+  transform-origin: top left;
+}
+
+/* animate in */
+.selected-panel.enter .panel-inner {
+  animation: slideIn 420ms cubic-bezier(.22,.9,.36,1) both;
+}
+
+/* animate out (quick) */
+.selected-panel.leave .panel-inner {
+  animation: slideOut 220ms cubic-bezier(.22,.9,.36,1) both;
+}
+
+/* small subtle crossfade for table rows */
+.selected-panel .fade-rows {
+  transition: opacity 360ms cubic-bezier(.22,.9,.36,1), transform 360ms cubic-bezier(.22,.9,.36,1);
+}
+.selected-panel.enter .fade-rows { opacity: 0; transform: translateY(6px) scale(0.998); }
+.selected-panel.enter .fade-rows.active { opacity: 1; transform: translateY(0) scale(1); }
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.996); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes slideOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-6px) scale(0.998); }
+}
 
 .logo {
   height: 6em;
