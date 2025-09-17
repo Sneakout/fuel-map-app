@@ -644,9 +644,35 @@ const cumulativeSums = useMemo(() => {
 
               {/* Trading Area - Outlets */}
               <div style={{ marginTop: 20 }}>
-                <h3 style={{ margin: '0 0 8px 0' }}>
-                  Trading Area — Outlets {pageIndex === 1 && `(Cumulative Apr → ${formatMonth(latestMonth)})`}
-                </h3>
+  <h3 style={{ margin: '0 0 8px 0', display: "flex", alignItems: "center", gap: 6 }}>
+  Trading Area — Outlets
+  <AnimatePresence mode="wait">
+    {pageIndex === 1 ? (
+      <motion.span
+        key="outlets-cumulative-title"
+        initial={{ opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 6 }}
+        transition={{ duration: 0.3 }}
+        style={{ fontWeight: 400, fontSize: "0.9em", color: "#64748B" }}
+      >
+        (Cumulative Apr → {formatMonth(latestMonth)})
+      </motion.span>
+    ) : (
+      <motion.span
+        key="outlets-monthly-title"
+        initial={{ opacity: 0, y: -6 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 6 }}
+        transition={{ duration: 0.3 }}
+        style={{ fontWeight: 400, fontSize: "0.9em", color: "#64748B" }}
+      >
+        (Month)
+      </motion.span>
+    )}
+  </AnimatePresence>
+</h3>
+
                 <div style={{ background: '#fff', borderRadius: 8, padding: 8, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
                   <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
                     <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
