@@ -186,6 +186,19 @@ function cumulativeForOutletRows(rows, startMonth, endMonth) {
   });
   return sum;
 }
+function cumulativeForAreaOutlets(areaOutlets, startMonth, endMonth) {
+  return areaOutlets.map(o => {
+    const sums = cumulativeForOutletRows(o.rows || [], startMonth, endMonth);
+    return {
+      ...o,
+      ms: sums.ms,
+      ms_ly: sums.ms_ly,
+      hsd: sums.hsd,
+      hsd_ly: sums.hsd_ly
+    };
+  });
+}
+
 
 // compute cumulative market share for a trading area (array of outlet aggregated station objects)
 // expects each station to have rows[] (all months)
@@ -217,10 +230,20 @@ export default function FuelMapApp() {
   const [stations, setStations] = useState([]);
   const [iconsMap, setIconsMap] = useState({});
   const [selected, setSelected] = useState(null);
-  const [latestMonth, setLatestMonth] = useState(() => {
-    const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-  });
+// pick latest month from CSV records, falling back to calendar if empty
+const [latestMonth, setLatestMonth] = useState(() => {
+  const recs = loadRecords();
+  if (recs && recs.length > 0) {
+    const months = uniqueSortedMonths(recs);
+    return months[0]; // newest first
+  }
+  // fallback to calendar month if no CSV yet
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+});
+
   const mapRef = useRef(null);
+  const [pageIndex, setPageIndex] = useState(0);
 
   // ref to hold last fetched CSV text for change detection (auto-refresh)
   const lastCsvTextRef = useRef(null);
@@ -258,6 +281,9 @@ export default function FuelMapApp() {
 
   // ✅ NEW EFFECT: keep selected RO pinned but refresh its month-specific values
   useEffect(() => {
+    if (typeof setCumulativeMode === "function") {
+    setCumulativeMode(pageIndex === 1);
+  }
     if (!selected) return;
     if (!stations || stations.length === 0) return;
 
@@ -526,111 +552,211 @@ export default function FuelMapApp() {
           </div>
         </div>
 
-      <aside style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
-        <div style={{ padding: 16 }}>
-          {!selected ? <div style={{ color: '#475569' }}>Select a Retail Outlet</div> : (
-            <div>
-              <h2 style={{ margin: 0 }}>{selected.name}</h2>
-              <div style={{ color: '#64748B', marginTop: 6 }}>{selected.company} • {selected.trading_area}</div>
-              {/* --- Month selector (shows all months found in CSV) --- */}
-<div style={{ marginTop: 8 }}>
-  {/* build months list from records (sorted descending) */}
-  {/** assume `records` is in scope in this component **/}
-  <MonthSelector
-    records={records}
-    value={latestMonth}
-    onChange={(m) => setLatestMonth(m)}
-  />
+<aside style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
+  <div style={{ padding: 16 }}>
+    {!selected ? (
+      <div style={{ color: '#475569' }}>Select a Retail Outlet</div>
+    ) : (
+      <div>
+        {/* Header: name + nav buttons */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>{selected.name}</h2>
+            <div style={{ color: '#64748B', marginTop: 6 }}>{selected.company} • {selected.trading_area}</div>
+          </div>
+
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <button
+              onClick={() => setPageIndex(0)}
+              aria-label="Monthly view"
+              title="Monthly view"
+              className="nav-btn"
+              style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 0 ? 1 : 0.7 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+
+            <button
+              onClick={() => setPageIndex(1)}
+              aria-label="Cumulative view"
+              title="Cumulative (Apr → latest)"
+              className="nav-btn"
+              style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 1 ? 1 : 0.7 }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        {/* Month selector */}
+        <div style={{ marginTop: 8 }}>
+          <MonthSelector records={records} value={latestMonth} onChange={(m) => setLatestMonth(m)} />
+        </div>
+
+        {/* Details grid (month-specific values) */}
+{/* Details grid */}
+<div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
+  <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Month</div>
+  <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
+  <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
+  <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS Change</div>
+  <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD</div>
+  <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD LY</div>
+  <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD Change</div>
+
+  {(() => {
+    if (pageIndex === 1) {
+      // cumulative mode (Apr -> latestMonth)
+      const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
+      const startMonth = `${year}-04`;
+      const sums = cumulativeForOutletRows(selected.rows || [], startMonth, latestMonth);
+
+      return (
+        <>
+          <div style={{ fontWeight: 600 }}>Cumulative</div>
+          <div style={{ fontWeight: 700 }}>{sums.ms.toLocaleString()}</div>
+          <div>{sums.ms_ly.toLocaleString()}</div>
+          <div><VolumeChange curr={sums.ms} prev={sums.ms_ly} /></div>
+          <div style={{ fontWeight: 700 }}>{sums.hsd.toLocaleString()}</div>
+          <div>{sums.hsd_ly.toLocaleString()}</div>
+          <div><VolumeChange curr={sums.hsd} prev={sums.hsd_ly} /></div>
+        </>
+      );
+    } else {
+      // normal monthly mode
+      return (
+        <>
+          <div>{formatMonth(selected.month)}</div>
+          <div style={{ fontWeight: 700 }}>{selected.ms.toLocaleString()}</div>
+          <div>{selected.ms_ly.toLocaleString()}</div>
+          <div><VolumeChange curr={selected.ms} prev={selected.ms_ly} /></div>
+          <div style={{ fontWeight: 700 }}>{selected.hsd.toLocaleString()}</div>
+          <div>{selected.hsd_ly.toLocaleString()}</div>
+          <div><VolumeChange curr={selected.hsd} prev={selected.hsd_ly} /></div>
+        </>
+      );
+    }
+  })()}
 </div>
 
 
-              {/* Details grid */}
-              <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
-                <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Month</div>
-                <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
-                <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
-                <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS Change</div>
-                <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD</div>
-                <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD LY</div>
-                <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD Change</div>
 
-                <div>{formatMonth(selected.month)}</div>
-                <div style={{ fontWeight: 700 }}>{selected.ms.toLocaleString()}</div>
-                <div>{selected.ms_ly.toLocaleString()}</div>
-                <div><VolumeChange curr={selected.ms} prev={selected.ms_ly} /></div>
-                <div style={{ fontWeight: 700 }}>{selected.hsd.toLocaleString()}</div>
-                <div>{selected.hsd_ly.toLocaleString()}</div>
-                <div><VolumeChange curr={selected.hsd} prev={selected.hsd_ly} /></div>
-              </div>
+{/* Trading Area — Outlets */}
+<div style={{ marginTop: 20 }}>
+  <h3 style={{ margin: '0 0 8px 0' }}>
+    Trading Area — Outlets {pageIndex === 1 && "(Cumulative Apr → " + formatMonth(latestMonth) + ")"}
+  </h3>
+  <div style={{ background: '#fff', borderRadius: 8, padding: 8, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+    <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+      <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+        <tr>
+          <th style={{ padding: '8px 6px' }}>Outlet</th>
+          <th style={{ padding: '8px 6px' }}>Company</th>
+          <th style={{ padding: '8px 6px' }}>MS</th>
+          <th style={{ padding: '8px 6px' }}>MS LY</th>
+          <th style={{ padding: '8px 6px' }}>Volume Change</th>
+          <th style={{ padding: '8px 6px' }}>HSD</th>
+          <th style={{ padding: '8px 6px' }}>HSD LY</th>
+          <th style={{ padding: '8px 6px' }}>Volume Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {(() => {
+          const areaNorm = (selected && (selected.trading_area_norm || (selected.trading_area || '').toLowerCase())) || "";
+          let outlets = outletsInAreaNorm(areaNorm);
 
-              {/* Trading Area Outlets table */}
-              <div style={{ marginTop: 20 }}>
-                <h3 style={{ margin: '0 0 8px 0' }}>Trading Area - Outlets</h3>
-                <div style={{ background: '#fff', borderRadius: 8, padding: 8, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
-                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-                    <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
-                      <tr>
-                        <th style={{ padding: '8px 6px' }}>Outlet</th>
-                        <th style={{ padding: '8px 6px' }}>Company</th>
-                        <th style={{ padding: '8px 6px' }}>MS</th>
-                        <th style={{ padding: '8px 6px' }}>MS LY</th>
-                        <th style={{ padding: '8px 6px' }}>Volume Change</th>
-                        <th style={{ padding: '8px 6px' }}>HSD</th>
-                        <th style={{ padding: '8px 6px' }}>HSD LY</th>
-                        <th style={{ padding: '8px 6px' }}>Volume Change</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {outletsInAreaNorm(selected.trading_area_norm).map((o, i) => {
-                        return (
-                          <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
-                            <td style={{ padding: '8px 6px' }}>{o.name}</td>
-                            <td style={{ padding: '8px 6px' }}>{o.company}</td>
-                            <td style={{ padding: '8px 6px' }}>{o.ms.toLocaleString()}</td>
-                            <td style={{ padding: '8px 6px' }}>{o.ms_ly.toLocaleString()}</td>
-                            <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.ms} prev={o.ms_ly} /></td>
-                            <td style={{ padding: '8px 6px' }}>{o.hsd.toLocaleString()}</td>
-                            <td style={{ padding: '8px 6px' }}>{o.hsd_ly.toLocaleString()}</td>
-                            <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.hsd} prev={o.hsd_ly} /></td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+          if (pageIndex === 1) {
+            // cumulative mode
+            const year = latestMonth.split("-")[0];
+            const startMonth = `${year}-04`;
+            outlets = cumulativeForAreaOutlets(outlets, startMonth, latestMonth);
+          }
 
-              {/* Market Share */}
-              <div style={{ marginTop: 20 }}>
-                <h3 style={{ margin: '0 0 8px 0' }}>Trading Area - Market Share</h3>
-                <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
-                  <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
-                    <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
-                      <tr>
-                        <th style={{ padding: '8px 6px' }}>Company</th>
-                        <th style={{ padding: '8px 6px' }}>Market Share</th>
-                        <th style={{ padding: '8px 6px' }}>Market Share (LY)</th>
-                        <th style={{ padding: '8px 6px' }}>Change</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {computeMarketShare(selected.trading_area_norm).map((m, i) => (
-                        <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
-                          <td style={{ padding: '8px 6px' }}>{m.company}</td>
-                          <td style={{ padding: '8px 6px' }}>{m.share.toFixed(2)}%</td>
-                          <td style={{ padding: '8px 6px' }}>{m.share_ly.toFixed(2)}%</td>
-                          <td style={{ padding: '8px 6px' }}><ShareChange value={m.share_change} /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+          if (!outlets || outlets.length === 0) {
+            return (<tr><td colSpan={8} style={{ padding: 16, color: '#64748B' }}>No outlets found in this trading area.</td></tr>);
+          }
 
-            </div>
-          )}
-        </div>
-      </aside>
+          return outlets.map((o, i) => (
+            <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+              <td style={{ padding: '8px 6px' }}>{o.name}</td>
+              <td style={{ padding: '8px 6px' }}>{o.company}</td>
+              <td style={{ padding: '8px 6px' }}>{o.ms.toLocaleString()}</td>
+              <td style={{ padding: '8px 6px' }}>{o.ms_ly.toLocaleString()}</td>
+              <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.ms} prev={o.ms_ly} /></td>
+              <td style={{ padding: '8px 6px' }}>{o.hsd.toLocaleString()}</td>
+              <td style={{ padding: '8px 6px' }}>{o.hsd_ly.toLocaleString()}</td>
+              <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.hsd} prev={o.hsd_ly} /></td>
+            </tr>
+          ));
+        })()}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
+        {/* Trading Area — Market Share */}
+ <div style={{ marginTop: 20 }}>
+  <h3 style={{ margin: '0 0 8px 0' }}>Trading Area — Market Share</h3>
+  <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+    <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+      <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+        <tr>
+          <th style={{ padding: '8px 6px' }}>Company</th>
+          <th style={{ padding: '8px 6px' }}>Market Share</th>
+          <th style={{ padding: '8px 6px' }}>Market Share (LY)</th>
+          <th style={{ padding: '8px 6px' }}>Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {(() => {
+          // safe area norm
+          const areaNorm = (selected && (selected.trading_area_norm || (selected.trading_area || '').toLowerCase())) || "";
+          // choose computation based on pageIndex (0 = monthly, 1 = cumulative)
+          let rows = [];
+          if (!areaNorm) {
+            rows = [];
+          } else if (pageIndex === 1) {
+            // cumulative from April of selected year -> latestMonth
+            const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
+            const startMonth = `${year}-04`;
+            rows = computeCumulativeMarketShareForArea(outletsInAreaNorm(areaNorm), startMonth, latestMonth);
+          } else {
+            rows = computeMarketShare(areaNorm);
+          }
+
+          if (!rows || rows.length === 0) {
+            return (
+              <tr>
+                <td colSpan={4} style={{ padding: 16, color: '#64748B' }}>
+                  No market-share data available for this trading area.
+                </td>
+              </tr>
+            );
+          }
+
+          return rows.map((m, i) => (
+            <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+              <td style={{ padding: '8px 6px' }}>{m.company}</td>
+              <td style={{ padding: '8px 6px' }}>{(m.share || 0).toFixed(2)}%</td>
+              <td style={{ padding: '8px 6px' }}>{(m.share_ly || 0).toFixed(2)}%</td>
+              <td style={{ padding: '8px 6px' }}><ShareChange value={m.share_change || 0} /></td>
+            </tr>
+          ));
+        })()}
+      </tbody>
+    </table>
+  </div>
+</div>
+      </div>
+    )}
+  </div>
+</aside>
+
 
     </div>
   );

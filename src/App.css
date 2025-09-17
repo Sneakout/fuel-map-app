@@ -5,6 +5,29 @@
   text-align: center;
 }
 
+/* prev/next nav button */
+.nav-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #F8FAFC;
+  border: 1px solid rgba(2,6,23,0.06);
+  box-shadow: 0 1px 2px rgba(2,6,23,0.04);
+  cursor: pointer;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+  color: #0F172A;
+}
+.nav-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(2,6,23,0.06); }
+.nav-btn.primary { background: linear-gradient(90deg,#EEF2FF,#DBF0FF); color: #1E3A8A; border-color: rgba(30,58,138,0.08); }
+.nav-btn svg { display: block; }
+
+/* subtle indicator when active */
+.nav-btn.primary { box-shadow: 0 6px 18px rgba(30,58,138,0.12); }
+
+
 .logo {
   height: 6em;
   padding: 1.5em;
