@@ -254,6 +254,83 @@ const cumulativeSums = useMemo(() => {
   return cumulativeForOutletRows(selected.rows || [], startMonth, latestMonth);
 }, [selected, latestMonth]);
 
+// Add near other useState hooks in FuelMapApp
+const [searchQuery, setSearchQuery] = useState('');
+const [suggestions, setSuggestions] = useState([]);
+
+// small helper to create suggestion objects
+function makeSuggestion(label, type, lat = null, lng = null, station = null) {
+  return { label, type, lat, lng, station };
+}
+
+// fuzzy search function — simple substring match (case-insensitive)
+function updateSuggestions(q) {
+  const value = (q || '').toString().trim().toLowerCase();
+  if (!value) { setSuggestions([]); return; }
+
+  const ss = [];
+  // match by exact/contains on RO name
+  for (const s of stations) {
+    const name = (s.name || '').toString().toLowerCase();
+    if (name.includes(value)) {
+      ss.push(makeSuggestion(s.name, 'Outlet', s.lat, s.lng, s));
+      if (ss.length >= 12) break;
+    }
+  }
+  // if not many matches, include trading area matches
+  if (ss.length < 12) {
+    for (const s of stations) {
+      const area = (s.trading_area || '').toString().toLowerCase();
+      if (area && area.includes(value)) {
+        // label uses trading area and an example outlet name
+        ss.push(makeSuggestion(`${s.trading_area} · ${s.name}`, 'Trading area', s.lat, s.lng, s));
+        if (ss.length >= 20) break;
+      }
+    }
+  }
+  // company matches last
+  if (ss.length < 20) {
+    const companiesSeen = new Set();
+    for (const s of stations) {
+      const comp = (s.company || '').toString().toLowerCase();
+      if (comp && comp.includes(value) && !companiesSeen.has(comp)) {
+        companiesSeen.add(comp);
+        ss.push(makeSuggestion(`${s.company} · ${s.name}`, 'Company', s.lat, s.lng, s));
+        if (ss.length >= 20) break;
+      }
+    }
+  }
+  setSuggestions(ss);
+}
+
+// when user chooses a suggestion
+function selectSuggestion(sug) {
+  setSearchQuery(sug.label);
+  setSuggestions([]);
+
+  // center map
+  if (mapRef.current && sug.lat && sug.lng) {
+    try {
+      // performance: use a tighter zoom for outlets
+      const zoom = sug.type === 'Outlet' ? 16 : 14;
+      mapRef.current.setView([Number(sug.lat), Number(sug.lng)], zoom, { animate: true });
+    } catch (e) { /* ignore */ }
+  }
+
+  // if we have a station object (exact outlet), pre-select it
+  if (sug.station) {
+    setSelected(prev => ({
+      ...sug.station,
+      trading_area_norm: sug.station.trading_area_norm || (sug.station.trading_area || '').toLowerCase()
+    }));
+  } else if (sug.type === 'Trading area') {
+    // if only area, pick first station in that area and select
+    const pick = stations.find(st => (st.trading_area || '').toLowerCase() === (sug.label.split(' · ')[0] || '').toLowerCase());
+    if (pick) {
+      setSelected(prev => ({ ...pick, trading_area_norm: pick.trading_area_norm || (pick.trading_area || '').toLowerCase() }));
+    }
+  }
+}
 
 
   // ref to hold last fetched CSV text for change detection (auto-refresh)
@@ -472,77 +549,188 @@ const cumulativeSums = useMemo(() => {
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       <div style={{ width: '50%', minWidth: '20%', maxWidth: '80%', display: 'flex', flexDirection: 'column', height: '100vh' }}>
-        <div style={{ flex: 1 }}>
-          <MapContainer whenCreated={map => { mapRef.current = map; map.invalidateSize(); }} center={center} zoom={13} style={{ height: '100%', width: '100%' }}>
-            <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
+{/* LEFT COLUMN: Map + Search (replace prior inner `div style={{ flex: 1 }}`) */}
+<div style={{ flex: 1, position: 'relative' }}>
+  {/* Search box overlay */}
+<div style={{
+  position: 'absolute',
+  top: 12,
+  left: '50%',
+  transform: 'translateX(-50%)',   // center horizontally
+  zIndex: 999,
+  width: 260,
+  borderRadius: 5,
+  background: 'rgba(255,255,255,0.4)',   // transparent
+  backdropFilter: 'blur(6px)',           // frosted glass
+  padding: 5,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  transition: 'box-shadow 0.2s ease, background 0.2s ease',
+}}
+onMouseEnter={e => {
+  e.currentTarget.style.background = 'rgba(255,255,255,0.9)';
+  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.15)';
+}}
+onMouseLeave={e => {
+  e.currentTarget.style.background = 'rgba(255,255,255,0.4)';
+  e.currentTarget.style.boxShadow = 'none';
+}}>
 
-            {stations.map(st => {
-              if (!st.lat || !st.lng || isNaN(st.lat) || isNaN(st.lng)) return null;
-              const cmp = (st.company || '').toString().replace(/\s+/g, '').toUpperCase();
-              const baseIcon = iconsMap[cmp] ? iconsMap[cmp] : fallbackIcon(st.company);
 
-              const isInSelectedArea = selected && st.trading_area_norm === selected.trading_area_norm;
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <input
+        aria-label="Search outlets, trading area or company"
+        placeholder="Search outlet, trading area or city — e.g. Neeliyat, Valanchery"
+        value={searchQuery}
+        onChange={(e) => {
+          setSearchQuery(e.target.value);
+          updateSuggestions(e.target.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            if (suggestions.length > 0) selectSuggestion(suggestions[0]);
+          } else if (e.key === 'Escape') {
+            setSearchQuery('');
+            setSuggestions([]);
+          }
+        }}
+style={{
+  flex: 1,
+  padding: '6px 8px',
+  borderRadius: 6,
+  border: '1px solid transparent',
+  fontSize: 12,
+  background: 'transparent',
+  outline: 'none'
+}}
+onFocus={e => e.currentTarget.style.border = '1px solid #38bdf8'}   // sky-blue highlight
+onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
-              const icon = isInSelectedArea
-                ? L.divIcon({
-                    html: `<div style="
-                      position: relative;
-                      width: 46px; height: 46px;
-                      display: flex; align-items: center; justify-content: center;
-                    ">
-                      <div style="
-                        position: absolute; width: 46px; height: 46px;
-                        border-radius: 50%;
-                        background: rgba(59,130,246,0.25);
-                        box-shadow: 0 0 12px rgba(59,130,246,0.6);
-                        animation: pulseGlow 1.5s infinite;
-                      "></div>
-                      <img src="/logos/${cmp}.svg" style="width: 36px; height: 36px;" />
-                    </div>`,
-                    className: "",
-                    iconSize: [46, 46],
-                    iconAnchor: [23, 46],
-                    popupAnchor: [0, -46],
-                  })
-                : baseIcon;
+      />
+      <button
+        title="Clear"
+        onClick={() => { setSearchQuery(''); setSuggestions([]); }}
+        style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background: '#F8FAFC', cursor: 'pointer' }}
+      >✕</button>
+    </div>
 
-              return (
-                <Marker
-                  key={st.id}
-                  position={[st.lat, st.lng]}
-                  icon={icon}
-                  eventHandlers={{
-                    click: () =>
-                      setSelected({
-                        ...st,
-                        trading_area_norm: st.trading_area_norm || (st.trading_area || '').toLowerCase(),
-                      }),
-                  }}
-                >
-                  <Tooltip direction="top" offset={[0, -10]} opacity={1} className="my-tooltip">
-                    <div style={{ minWidth: 220 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13 }}>{st.name}</div>
-                      <div style={{ color: "#64748B", marginTop: 2 }}>{st.company} • {st.trading_area}</div>
+    {suggestions.length > 0 && (
+      <div style={{ maxHeight: 220, overflowY: 'auto', borderTop: '1px solid #F1F5F9', paddingTop: 6 }}>
+        {suggestions.slice(0, 20).map((s, idx) => (
+          <div
+            key={idx}
+            role="button"
+            onClick={() => selectSuggestion(s)}
+            style={{
+              padding: '8px 6px',
+              borderRadius: 8,
+              cursor: 'pointer',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: idx === 0 ? 'rgba(14,165,233,0.03)' : 'transparent'
+            }}
+          >
+            <div style={{ fontSize: 13, color: '#0F172A', fontWeight: 600 }}>{s.label}</div>
+            <div style={{ fontSize: 12, color: '#64748B' }}>{s.type}</div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
 
-                      <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, textAlign: "center" }}>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                          <div style={{ fontSize: 11, color: "#94A3B8" }}>MS</div>
-                          <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.ms.toLocaleString()}</div>
-                          <PercentBadge value={calcGrowth(st.ms, st.ms_ly)} />
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                          <div style={{ fontSize: 11, color: "#94A3B8" }}>HSD</div>
-                          <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.hsd.toLocaleString()}</div>
-                          <PercentBadge value={calcGrowth(st.hsd, st.hsd_ly)} />
-                        </div>
-                      </div>
-                    </div>
-                  </Tooltip>
-                </Marker>
-              );
-            })}
-          </MapContainer>
-        </div>
+  {/* Map */}
+  <MapContainer
+    whenCreated={map => { mapRef.current = map; map.invalidateSize(); }}
+    center={center}
+    zoom={13}
+    style={{ height: '100%', width: '100%' }}
+  >
+    <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
+
+    {stations.map(st => {
+      if (!st.lat || !st.lng || isNaN(st.lat) || isNaN(st.lng)) return null;
+      const cmp = (st.company || '').toString().replace(/\s+/g, '').toUpperCase();
+      const baseIcon = iconsMap[cmp] ? iconsMap[cmp] : fallbackIcon(st.company);
+
+      const isInSelectedArea =
+        selected && st.trading_area_norm === selected.trading_area_norm;
+
+      const icon = isInSelectedArea
+        ? L.divIcon({
+            html: `<div style="
+                position: relative;
+                width: 46px; height: 46px;
+                display: flex; align-items: center; justify-content: center;
+              ">
+                <div style="
+                  position: absolute; width: 46px; height: 46px;
+                  border-radius: 50%;
+                  background: rgba(59,130,246,0.25);
+                  box-shadow: 0 0 12px rgba(59,130,246,0.6);
+                  animation: pulseGlow 1.5s infinite;
+                "></div>
+                <img src="/logos/${cmp}.svg" style="width: 36px; height: 36px;" />
+              </div>`,
+            className: "",
+            iconSize: [46, 46],
+            iconAnchor: [23, 46],
+            popupAnchor: [0, -46],
+          })
+        : baseIcon;
+
+      return (
+        <Marker
+          key={st.id}
+          position={[st.lat, st.lng]}
+          icon={icon}
+          eventHandlers={{
+            click: () =>
+              setSelected({
+                ...st,
+                trading_area_norm:
+                  st.trading_area_norm || (st.trading_area || '').toLowerCase(),
+              }),
+          }}
+        >
+          <Tooltip direction="top" offset={[0, -10]} opacity={1} className="my-tooltip">
+            {/* .. existing tooltip content (unchanged) .. */}
+            <div style={{ minWidth: 220 }}>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>{st.name}</div>
+              <div style={{ color: "#64748B", marginTop: 2 }}>
+                {st.company} • {st.trading_area}
+              </div>
+
+              <div
+                style={{
+                  marginTop: 8,
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                  textAlign: "center",
+                }}
+              >
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ fontSize: 11, color: "#94A3B8" }}>MS</div>
+                  <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.ms.toLocaleString()}</div>
+                  <PercentBadge value={calcGrowth(st.ms, st.ms_ly)} />
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                  <div style={{ fontSize: 11, color: "#94A3B8" }}>HSD</div>
+                  <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.hsd.toLocaleString()}</div>
+                  <PercentBadge value={calcGrowth(st.hsd, st.hsd_ly)} />
+                </div>
+              </div>
+            </div>
+          </Tooltip>
+        </Marker>
+      );
+    })}
+  </MapContainer>
+</div>
+
       </div>
 
       <aside style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>

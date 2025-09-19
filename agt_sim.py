@@ -109,55 +109,77 @@ def build_company_action_series(agg_df: pd.DataFrame, trading_area: str, company
 # -------------------------
 def build_payoff_matrix_from_observations(agg_df: pd.DataFrame, trading_area: str, month_index: int, months_sorted: List[str]) -> Tuple[np.ndarray, List[str]]:
     """
-    Constructs a symmetric payoff game for all companies in the trading area
-    for the transition month_index-1 -> month_index based on observed actions.
+    Improved payoff construction based on market-share (percentage-point) changes.
+
     Approach:
-      - Strategies: {Decrease, Stable, Increase} (3)
-      - For each company, observed action is a strategy for that company in the month transition.
-      - Payoff for a joint strategy profile is estimated from the resulting market-share changes.
-    This is empirical and simplified: the payoff matrix we build is pairwise/aggregate:
-      - We'll create a square N x N matrix where N = number of companies.
-      - Entry (i,j) is the observed immediate payoff for company i when i used observed action ai and j used aj.
-    For multi-player, nashpy handles 2-player games. We will create pairwise 2-player games
-    between top-two companies in area (most relevant) for equilibrium analysis.
+    - Compute total value per area for month t-1 and t.
+    - Compute company shares at t-1 and t (share in [0,1]).
+    - share_change = (share_t - share_t_minus_1) expressed in percentage points (i.e. *100).
+    - Self-payoff (diagonal) = share_change_i (so positive = gained share).
+    - Off-diagonal entry M[i,j] = share_change_i - influence_factor * share_change_j,
+      modeling that opponent j's gain reduces i's effective payoff.
+    - influence_factor is configurable here (0.25 default) to moderate opponent influence.
+    - Works if some companies have zero volume (smoothing added).
     """
     companies = companies_in_area(agg_df, trading_area)
-    if len(companies) < 2:
-        return np.zeros((1,1)), companies
-
-    # compute values for month t-1 and t
+    if len(companies) == 0:
+        return np.zeros((0, 0)), companies
     if month_index == 0:
+        # no previous month to compare
         return np.zeros((len(companies), len(companies))), companies
 
+    # choose months
     m_prev = months_sorted[month_index - 1]
     m_curr = months_sorted[month_index]
 
-    vals_prev = {c: float(agg_df[(agg_df['trading_area']==trading_area) & (agg_df['month']==m_prev) & (agg_df['company']==c)]['value'].sum() or 0.0) for c in companies}
-    vals_curr = {c: float(agg_df[(agg_df['trading_area']==trading_area) & (agg_df['month']==m_curr) & (agg_df['company']==c)]['value'].sum() or 0.0) for c in companies}
+    # gather total volume per month for the area
+    total_prev = float(agg_df[(agg_df['trading_area'] == trading_area) & (agg_df['month'] == m_prev)]['value'].sum() or 0.0)
+    total_curr = float(agg_df[(agg_df['trading_area'] == trading_area) & (agg_df['month'] == m_curr)]['value'].sum() or 0.0)
 
-    # compute observed relative change per company
-    rel_change = {}
+    # smoothing to avoid divide-by-zero and reduce noise for tiny totals
+    eps_total = 1e-9
+    total_prev = max(total_prev, eps_total)
+    total_curr = max(total_curr, eps_total)
+
+    # compute shares and share-change (in percentage points)
+    share_prev = {}
+    share_curr = {}
+    share_change_pp = {}  # percentage points (share * 100)
     for c in companies:
-        prev = vals_prev.get(c, 0)
-        curr = vals_curr.get(c, 0)
-        if prev == 0:
-            change = curr - prev
-        else:
-            change = (curr - prev) / prev
-        rel_change[c] = change
+        val_prev = float(agg_df[(agg_df['trading_area'] == trading_area) & (agg_df['month'] == m_prev) & (agg_df['company'] == c)]['value'].sum() or 0.0)
+        val_curr = float(agg_df[(agg_df['trading_area'] == trading_area) & (agg_df['month'] == m_curr) & (agg_df['company'] == c)]['value'].sum() or 0.0)
+        sp = val_prev / total_prev
+        sc = val_curr / total_curr
+        share_prev[c] = sp
+        share_curr[c] = sc
+        # convert to percentage points for interpretability (e.g., +1.5 = +1.5 pp)
+        share_change_pp[c] = (sc - sp) * 100.0
 
-    # For pairwise 2-player construction (top two by prev volume)
-    # We'll return full vector of changes and list of companies; caller may construct pairwise games.
-    # To support generic payoff matrix, create matrix where diag is self-payoff (change), off-diags are average interactions
+    # build matrix
     n = len(companies)
     M = np.zeros((n, n))
+
+    # Tunable parameter: how strongly one company's gain penalizes another's payoff.
+    # 0 => independent (only own change matters). 0.25 => opponent changes subtract 25% of their change.
+    influence_factor = 0.25
+
+    # Populate matrix: diag = own change; off-diag = own_change - influence_factor * opp_change
     for i, ci in enumerate(companies):
         for j, cj in enumerate(companies):
-            # simplistic rule: payoff roughly equals company's rel_change scaled by influence of opponent:
-            # if opponent decreased (rel_change negative) -> i gets relatively better
-            # We'll set: M[i,j] = rel_change[ci] - 0.3 * rel_change[cj]
-            M[i, j] = rel_change[ci] - 0.3 * rel_change[cj]
+            own = share_change_pp.get(ci, 0.0)
+            opp = share_change_pp.get(cj, 0.0)
+            if i == j:
+                M[i, j] = own
+            else:
+                M[i, j] = own - (influence_factor * opp)
+
+    # Optional normalization: if markets are tiny, scale down large swings.
+    # Here we cap values to a reasonable band to keep dynamics stable.
+    cap = 50.0  # +/- 50 percentage points is extreme; clamp to this range
+    M = np.clip(M, -cap, cap)
+
     return M, companies
+
 
 # -------------------------
 # Solvers & Dynamics
@@ -238,16 +260,14 @@ def analyze_all_areas(csv_path: str, value_col='ms') -> Dict[str, Any]:
     agg = company_month_aggregate(df, value_col=value_col)
     results = {}
     # collect months per area (sorted ascending)
-    months_all = sorted(agg['month'].unique())
     areas = sorted(agg['trading_area'].unique())
     for area in areas:
-        months = sorted(agg[agg['trading_area']==area]['month'].unique())
+        months = sorted(agg[agg['trading_area'] == area]['month'].unique())
         if not months:
             continue
-        area_res = {'months': months, 'per_month': []}
+        area_res = {'months': months, 'per_month': {}}  # per_month is a dict keyed by month
         for mi, m in enumerate(months):
             M, companies = build_payoff_matrix_from_observations(agg, area, mi, months)
-            # quick dynamics
             try:
                 fp = fictitious_play(M) if M.size else np.array([])
             except Exception:
@@ -257,16 +277,17 @@ def analyze_all_areas(csv_path: str, value_col='ms') -> Dict[str, Any]:
             except Exception:
                 rd = np.array([])
             lh = compute_lemke_howson_for_pair(M, companies) if M.size else {}
-            area_res['per_month'].append({
+            area_res['per_month'][m] = {
                 'month': m,
-                'payoff_matrix': M,
+                'payoff_matrix': M.tolist(),
                 'companies': companies,
                 'fictitious_play': fp.tolist() if fp.size else [],
                 'replicator': rd.tolist() if rd.size else [],
                 'lemke_howson': lh
-            })
+            }
         results[area] = area_res
     return results
+
 
 # -------------------------
 # Example usage (CLI)

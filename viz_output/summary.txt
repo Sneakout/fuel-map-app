@@ -1,0 +1,12 @@
+Area: Valanchery
+Month: 2025-05
+
+Companies: BPC, IOC, RIL
+
+Fictitious play vector: [0.0, 0.0, 1.0]
+Replicator vector: [0.33472387149872734, 0.21521797427321102, 0.4500581542280617]
+
+Lemke-Howson / Equilibria summary:
+{'equilibria': [['[1. 0.]', '[1. 0.]']],
+ 'matrix_pair': '[[ 0.1037037   0.21432462]\n [-0.26503268 -0.15441176]]',
+ 'players': ['RIL', 'IOC']}
