@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import Papa from "papaparse";
-import { MapContainer, TileLayer, Marker, Tooltip } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Tooltip, useMapEvents } from "react-leaflet";
 import { motion, AnimatePresence } from "framer-motion";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -313,7 +313,196 @@ function GrowthTable({ rows, label }) {
     </div>
   );
 }
+// === NEW: company summary helpers for growth pages ===
+function summarizeByCompany(rows) {
+  const map = {};
+  (rows || []).forEach(r => {
+    const company = (r.company || 'PVT').toString().trim() || 'PVT';
+    const hasBase = Number(r.lastYear || 0) > 0;
+    if (!map[company]) map[company] = { company, total: 0, withBase: 0, withoutBase: 0 };
+    map[company].total += 1;
+    if (hasBase) map[company].withBase += 1; else map[company].withoutBase += 1;
+  });
+  return Object.values(map).sort((a, b) => b.total - a.total);
+}
 
+function SummaryTable({ rows, label }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <h4 style={{ margin: '0 0 6px 0' }}>{label}</h4>
+      <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+            <tr>
+              <th style={{ padding: '8px 6px' }}>Company</th>
+              <th style={{ padding: '8px 6px' }}>Number of ROs</th>
+              <th style={{ padding: '8px 6px' }}>ROs without base</th>
+              <th style={{ padding: '8px 6px' }}>ROs with base</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(!rows || rows.length === 0) ? (
+              <tr><td colSpan={4} style={{ padding: 16, color: '#64748B' }}>No data.</td></tr>
+            ) : rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                <td style={{ padding: '8px 6px' }}>{r.company}</td>
+                <td style={{ padding: '8px 6px' }}>{r.total}</td>
+                <td style={{ padding: '8px 6px' }}>{r.withoutBase}</td>
+                <td style={{ padding: '8px 6px' }}>{r.withBase}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// === NEW: Market share helpers (All stations) ===
+
+// Monthly (single selected month across all stations)
+function marketShareRowsAllMonthly_MS(stations) {
+  const by = {};
+  let total = 0, total_ly = 0;
+  (stations || []).forEach(s => {
+    const comp = (s.company || 'PVT').toString().trim().toUpperCase();
+    const ms = Number(s.ms || 0), ms_ly = Number(s.ms_ly || 0);
+    by[comp] = by[comp] || { company: comp, curr: 0, last: 0 };
+    by[comp].curr += ms; by[comp].last += ms_ly;
+    total += ms; total_ly += ms_ly;
+  });
+  return Object.values(by).map(r => {
+    const growth = r.curr - r.last;
+    const growthPct = r.last === 0 ? (r.curr === 0 ? 0 : 100) : (growth / r.last) * 100;
+    const share = total ? (r.curr / total) * 100 : 0;
+    const share_ly = total_ly ? (r.last / total_ly) * 100 : 0;
+    const share_change = share - share_ly;
+    // Mop-up volume: volume needed to bring current share to last year's share at current total
+    const target_curr = (share_ly / 100) * total;
+    const mop_up = target_curr - r.curr; // +ve needs volume; -ve has surplus
+    return { company: r.company, curr: r.curr, last: r.last, growth, growthPct, share, share_ly, share_change, mop_up };
+  }).sort((a,b)=>b.share - a.share);
+}
+
+function marketShareRowsAllMonthly_HSD(stations) {
+  const by = {};
+  let total = 0, total_ly = 0;
+  (stations || []).forEach(s => {
+    const comp = (s.company || 'PVT').toString().trim().toUpperCase();
+    const v = Number(s.hsd || 0), vly = Number(s.hsd_ly || 0);
+    by[comp] = by[comp] || { company: comp, curr: 0, last: 0 };
+    by[comp].curr += v; by[comp].last += vly;
+    total += v; total_ly += vly;
+  });
+  return Object.values(by).map(r => {
+    const growth = r.curr - r.last;
+    const growthPct = r.last === 0 ? (r.curr === 0 ? 0 : 100) : (growth / r.last) * 100;
+    const share = total ? (r.curr / total) * 100 : 0;
+    const share_ly = total_ly ? (r.last / total_ly) * 100 : 0;
+    const share_change = share - share_ly;
+    const target_curr = (share_ly / 100) * total;
+    const mop_up = target_curr - r.curr;
+    return { company: r.company, curr: r.curr, last: r.last, growth, growthPct, share, share_ly, share_change, mop_up };
+  }).sort((a,b)=>b.share - a.share);
+}
+
+// Cumulative (Apr → latest across all stations)
+function marketShareRowsAllCumulative_MS(stations, startMonth, endMonth) {
+  const by = {};
+  let total = 0, total_ly = 0;
+  (stations || []).forEach(s => {
+    const comp = (s.company || 'PVT').toString().trim().toUpperCase();
+    const sums = cumulativeForOutletRows(s.rows || [], startMonth, endMonth);
+    const ms = Number(sums.ms || 0), ms_ly = Number(sums.ms_ly || 0);
+    by[comp] = by[comp] || { company: comp, curr: 0, last: 0 };
+    by[comp].curr += ms; by[comp].last += ms_ly;
+    total += ms; total_ly += ms_ly;
+  });
+  return Object.values(by).map(r => {
+    const growth = r.curr - r.last;
+    const growthPct = r.last === 0 ? (r.curr === 0 ? 0 : 100) : (growth / r.last) * 100;
+    const share = total ? (r.curr / total) * 100 : 0;
+    const share_ly = total_ly ? (r.last / total_ly) * 100 : 0;
+    const share_change = share - share_ly;
+    const target_curr = (share_ly / 100) * total;
+    const mop_up = target_curr - r.curr;
+    return { company: r.company, curr: r.curr, last: r.last, growth, growthPct, share, share_ly, share_change, mop_up };
+  }).sort((a,b)=>b.share - a.share);
+}
+
+function marketShareRowsAllCumulative_HSD(stations, startMonth, endMonth) {
+  const by = {};
+  let total = 0, total_ly = 0;
+  (stations || []).forEach(s => {
+    const comp = (s.company || 'PVT').toString().trim().toUpperCase();
+    const sums = cumulativeForOutletRows(s.rows || [], startMonth, endMonth);
+    const v = Number(sums.hsd || 0), vly = Number(sums.hsd_ly || 0);
+    by[comp] = by[comp] || { company: comp, curr: 0, last: 0 };
+    by[comp].curr += v; by[comp].last += vly;
+    total += v; total_ly += vly;
+  });
+  return Object.values(by).map(r => {
+    const growth = r.curr - r.last;
+    const growthPct = r.last === 0 ? (r.curr === 0 ? 0 : 100) : (growth / r.last) * 100;
+    const share = total ? (r.curr / total) * 100 : 0;
+    const share_ly = total_ly ? (r.last / total_ly) * 100 : 0;
+    const share_change = share - share_ly;
+    const target_curr = (share_ly / 100) * total;
+    const mop_up = target_curr - r.curr;
+    return { company: r.company, curr: r.curr, last: r.last, growth, growthPct, share, share_ly, share_change, mop_up };
+  }).sort((a,b)=>b.share - a.share);
+}
+
+// === NEW: Market share table ===
+function MarketShareTable({ rows, label }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <h4 style={{ margin: '0 0 6px 0' }}>{label}</h4>
+      <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+            <tr>
+              <th style={{ padding: '8px 6px' }}>Company</th>
+              <th style={{ padding: '8px 6px' }}>Current year sales</th>
+              <th style={{ padding: '8px 6px' }}>Last year sales</th>
+              <th style={{ padding: '8px 6px' }}>Growth</th>
+              <th style={{ padding: '8px 6px' }}>Growth %</th>
+              <th style={{ padding: '8px 6px' }}>Current share</th>
+              <th style={{ padding: '8px 6px' }}>Last year share</th>
+              <th style={{ padding: '8px 6px' }}>Change</th>
+              <th style={{ padding: '8px 6px' }}>Mop up volume</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(!rows || rows.length === 0) ? (
+              <tr><td colSpan={9} style={{ padding: 16, color: '#64748B' }}>No data.</td></tr>
+            ) : rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                <td style={{ padding: '8px 6px' }}>{r.company}</td>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{Number(r.curr||0).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.last||0).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px' }}>{(r.growth>=0?'+':'') + Number(r.growth||0).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.growthPct||0).toFixed(1)}%</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.share||0).toFixed(2)}%</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.share_ly||0).toFixed(2)}%</td>
+                <td style={{ padding: '8px 6px' }}>{(r.share_change>=0?'+':'') + Number(r.share_change||0).toFixed(2)} pp</td>
+                <td style={{ padding: '8px 6px' }}>{(Number(r.mop_up||0)).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+function DeselectOnMapClick({ onDeselect }) {
+  useMapEvents({
+    click: () => onDeselect(), // fires when clicking anywhere on the map background/tiles
+  });
+  return null; // no UI
+}
 
 /* ---------- main app ---------- */
 export default function FuelMapApp() {
@@ -731,14 +920,15 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
   </div>
 
   {/* Map */}
-  <MapContainer
-    whenCreated={map => { mapRef.current = map; map.invalidateSize(); }}
-    center={center}
-    zoom={13}
-    style={{ height: '100%', width: '100%' }}
-  >
+<MapContainer
+  whenCreated={map => { mapRef.current = map; map.invalidateSize(); }}
+  center={center}
+  zoom={13}
+  style={{ height: '100%', width: '100%' }}
+>
     <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
-
+    {/* Deselect when clicking anywhere on map that is not a Marker */}
+    <DeselectOnMapClick onDeselect={() => setSelected(null)} />
     {stations.map(st => {
       if (!st.lat || !st.lng || isNaN(st.lat) || isNaN(st.lng)) return null;
       const cmp = (st.company || '').toString().replace(/\s+/g, '').toUpperCase();
@@ -825,10 +1015,125 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
       <aside style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
         <div style={{ padding: 16 }}>
-          {!selected ? (
-            <div style={{ color: '#475569' }}>Select a Retail Outlet</div>
-          ) : (
-            <div>
+
+{/* Month selector should always be visible */}
+<div style={{ marginBottom: 8 }}>
+  <MonthSelector records={records} value={latestMonth} onChange={(m) => setLatestMonth(m)} />
+</div>
+{!selected ? (
+  <div>
+    {/* Buttons visible when NO RO is selected */}
+    <div style={{ display: 'flex', gap: 6 }}>
+      <button
+        onClick={() => setPageIndex(2)}
+        title="Positive growth (selected month)"
+        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F0F9FF', cursor:'pointer' }}
+      >+M</button>
+      <button
+        onClick={() => setPageIndex(3)}
+        title="Positive growth (cumulative Apr → selected)"
+        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFDF5', cursor:'pointer' }}
+      >+C</button>
+      <button
+        onClick={() => setPageIndex(4)}
+        title="Negative growth (selected month)"
+        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF2F2', cursor:'pointer' }}
+      >−M</button>
+      <button
+        onClick={() => setPageIndex(5)}
+        title="Negative growth (cumulative Apr → selected)"
+        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFE4E6', cursor:'pointer' }}
+      >−C</button>
+    </div>
+    <button
+  onClick={() => setPageIndex(6)}
+  title="Market share (selected month)"
+  style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F8FAFC', cursor:'pointer' }}
+>Market share</button>
+
+<button
+  onClick={() => setPageIndex(7)}
+  title="Cumulative Market share (Apr → selected)"
+  style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFF7ED', cursor:'pointer' }}
+>Cumulative Market share</button>
+
+
+  {/* Growth/MarketShare pages when no RO is selected */}
+{pageIndex >= 2 && (() => {
+  const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
+  const startMonth = `${year}-04`;
+
+  // Build data for Growth pages
+  const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
+  const monthlyHSD = buildMonthlyGrowthRowsHSD(stations);
+  const cumMS      = buildCumulativeGrowthRowsMS(stations, startMonth, latestMonth);
+  const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
+
+  // Build data for Market share pages (All stations)
+  const msMonthly  = marketShareRowsAllMonthly_MS(stations);
+  const hsdMonthly = marketShareRowsAllMonthly_HSD(stations);
+  const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth);
+  const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth);
+
+  // Decide which page to show
+  if (pageIndex === 6) {
+    return (
+      <div style={{ marginTop: 14 }}>
+        <h3 style={{ margin: '0 0 8px 0' }}>Market share | Selected Month</h3>
+        <MarketShareTable rows={msMonthly}  label="MS | Company-wiseMarket Share" />
+        <MarketShareTable rows={hsdMonthly} label="HSD | Company-wise Market Share" />
+      </div>
+    );
+  }
+  if (pageIndex === 7) {
+    return (
+      <div style={{ marginTop: 14 }}>
+        <h3 style={{ margin: '0 0 8px 0' }}>Cumulative Market share — Apr → {formatMonth(latestMonth)}</h3>
+        <MarketShareTable rows={msCum}  label="MS | Company Market Share (Cumulative)" />
+        <MarketShareTable rows={hsdCum} label="HSD | Company Market Share (Cumulative)" />
+      </div>
+    );
+  }
+
+  // Existing Growth pages (+M/+C/−M/−C)
+  let rowsMS = [], rowsHSD = [];
+  if (pageIndex === 2) {
+    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth > 0), 'desc');
+    rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth > 0), 'desc');
+  } else if (pageIndex === 3) {
+    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth > 0), 'desc');
+    rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth > 0), 'desc');
+  } else if (pageIndex === 4) {
+    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth < 0), 'asc');
+    rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth < 0), 'asc');
+  } else if (pageIndex === 5) {
+    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth < 0), 'asc');
+    rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth < 0), 'asc');
+  }
+
+  const title =
+    pageIndex === 2 ? 'Selected Month — Positive Growth' :
+    pageIndex === 3 ? 'Cumulative (Apr → Selected) — Positive Growth' :
+    pageIndex === 4 ? 'Selected Month — Negative Growth' :
+                      'Cumulative (Apr → Selected) — Negative Growth';
+
+  const summaryMS  = summarizeByCompany(rowsMS);
+  const summaryHSD = summarizeByCompany(rowsHSD);
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <h3 style={{ margin: '0 0 8px 0' }}>{title}</h3>
+      <SummaryTable rows={summaryMS}  label="MS — Summary by Company" />
+      <GrowthTable  rows={rowsMS}     label="MS — RO-wise" />
+      <SummaryTable rows={summaryHSD} label="HSD — Summary by Company" />
+      <GrowthTable  rows={rowsHSD}    label="HSD — RO-wise" />
+    </div>
+  );
+})()}
+  </div>
+) : (
+  <div>
+
               {/* Header: name + nav buttons */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
@@ -863,78 +1168,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 </div>
               </div>
 
-                {/* NEW: four growth pages */}
-  <div style={{ display: 'flex', gap: 6, marginLeft: 6 }}>
-    <button
-      onClick={() => setPageIndex(2)}
-      title="Positive growth (selected month)"
-      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F0F9FF', cursor:'pointer' }}
-    >+M</button>
-    <button
-      onClick={() => setPageIndex(3)}
-      title="Positive growth (cumulative Apr → selected)"
-      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFDF5', cursor:'pointer' }}
-    >+C</button>
-    <button
-      onClick={() => setPageIndex(4)}
-      title="Negative growth (selected month)"
-      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF2F2', cursor:'pointer' }}
-    >−M</button>
-    <button
-      onClick={() => setPageIndex(5)}
-      title="Negative growth (cumulative Apr → selected)"
-      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFE4E6', cursor:'pointer' }}
-    >−C</button>
-  </div>
 
-
-              {/* Month selector */}
-              <div style={{ marginTop: 8 }}>
-                <MonthSelector records={records} value={latestMonth} onChange={(m) => setLatestMonth(m)} />
-              </div>
-
-{/* NEW: Growth pages (pageIndex 2..5) — Month Selector stays above */}
-{pageIndex >= 2 && (() => {
-  const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
-  const startMonth = `${year}-04`;
-
-  // Build rows
-  const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
-  const monthlyHSD = buildMonthlyGrowthRowsHSD(stations);
-  const cumMS      = buildCumulativeGrowthRowsMS(stations, startMonth, latestMonth);
-  const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
-
-  // Choose set + sort
-  let rowsMS = [];
-  let rowsHSD = [];
-  if (pageIndex === 2) { // positive, monthly — descending
-    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth > 0), 'desc');
-rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth > 0), 'desc');
-  } else if (pageIndex === 3) { // positive, cumulative — descending
-    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth > 0), 'desc');
-rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth > 0), 'desc');
-  } else if (pageIndex === 4) { // negative, monthly — ascending
-    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth < 0), 'asc');
-rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth < 0), 'asc');
-  } else if (pageIndex === 5) { // negative, cumulative — ascending
-    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth < 0), 'asc');
-rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth < 0), 'asc');
-  }
-
-  const title =
-    pageIndex === 2 ? 'Selected Month — Positive Growth' :
-    pageIndex === 3 ? 'Cumulative (Apr → Selected) — Positive Growth' :
-    pageIndex === 4 ? 'Selected Month — Negative Growth' :
-                      'Cumulative (Apr → Selected) — Negative Growth';
-
-  return (
-    <div style={{ marginTop: 14 }}>
-      <h3 style={{ margin: '0 0 8px 0' }}>{title}</h3>
-      <GrowthTable rows={rowsMS}  label="MS" />
-      <GrowthTable rows={rowsHSD} label="HSD" />
-    </div>
-  );
-})()}
 
 
 <div style={{ marginTop: 16 }}>
