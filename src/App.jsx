@@ -479,14 +479,34 @@ function MarketShareTable({ rows, label }) {
             ) : rows.map((r, i) => (
               <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
                 <td style={{ padding: '8px 6px' }}>{r.company}</td>
-                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{Number(r.curr||0).toLocaleString()}</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.last||0).toLocaleString()}</td>
-                <td style={{ padding: '8px 6px' }}>{(r.growth>=0?'+':'') + Number(r.growth||0).toLocaleString()}</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.growthPct||0).toFixed(1)}%</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.share||0).toFixed(2)}%</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.share_ly||0).toFixed(2)}%</td>
-                <td style={{ padding: '8px 6px' }}>{(r.share_change>=0?'+':'') + Number(r.share_change||0).toFixed(2)} pp</td>
-                <td style={{ padding: '8px 6px' }}>{(Number(r.mop_up||0)).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{Number(r.curr || 0).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.last || 0).toLocaleString()}</td>
+                <td style={{
+                  padding: '8px 6px',
+                  background: (r.growth || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
+                  color: (r.growth || 0) >= 0 ? '#064E3B' : '#7F1D1D',
+                  fontWeight: 700
+                }}>{(r.growth >= 0 ? '+' : '') + Number(r.growth || 0).toLocaleString()}</td>
+                <td style={{
+                  padding: '8px 6px',
+                  background: (r.growthPct || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
+                  color: (r.growthPct || 0) >= 0 ? '#064E3B' : '#7F1D1D',
+                  fontWeight: 700
+                }}>{Number(r.growthPct || 0).toFixed(1)}%</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.share || 0).toFixed(2)}%</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.share_ly || 0).toFixed(2)}%</td>
+                <td style={{
+                  padding: '8px 6px',
+                  background: (r.share_change || 0) >= 0 ? '#ECFDF5' : '#FEE2E2',
+                  color: (r.share_change || 0) >= 0 ? '#064E3B' : '#7F1D1D',
+                  fontWeight: 700
+                }}>{(r.share_change >= 0 ? '+' : '') + Number(r.share_change || 0).toFixed(2)} pp</td>
+                <td style={{
+                  padding: '8px 6px',
+                  background: (r.mop_up || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
+                  color: (r.mop_up || 0) >= 0 ? '#064E3B' : '#7F1D1D',
+                  fontWeight: 700
+                }}>{Number(r.mop_up || 0).toLocaleString()}</td>
               </tr>
             ))}
           </tbody>
@@ -495,7 +515,6 @@ function MarketShareTable({ rows, label }) {
     </div>
   );
 }
-
 
 function DeselectOnMapClick({ onDeselect }) {
   useMapEvents({
@@ -1112,10 +1131,10 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
   }
 
   const title =
-    pageIndex === 2 ? 'Selected Month — Positive Growth' :
-    pageIndex === 3 ? 'Cumulative (Apr → Selected) — Positive Growth' :
-    pageIndex === 4 ? 'Selected Month — Negative Growth' :
-                      'Cumulative (Apr → Selected) — Negative Growth';
+    pageIndex === 2 ? 'Selected Month | Positive Growth' :
+    pageIndex === 3 ? 'Cumulative (Apr → Selected) | Positive Growth' :
+    pageIndex === 4 ? 'Selected Month | Negative Growth' :
+                      'Cumulative (Apr → Selected) | Negative Growth';
 
   const summaryMS  = summarizeByCompany(rowsMS);
   const summaryHSD = summarizeByCompany(rowsHSD);
@@ -1123,10 +1142,10 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
   return (
     <div style={{ marginTop: 14 }}>
       <h3 style={{ margin: '0 0 8px 0' }}>{title}</h3>
-      <SummaryTable rows={summaryMS}  label="MS — Summary by Company" />
-      <GrowthTable  rows={rowsMS}     label="MS — RO-wise" />
-      <SummaryTable rows={summaryHSD} label="HSD — Summary by Company" />
-      <GrowthTable  rows={rowsHSD}    label="HSD — RO-wise" />
+      <SummaryTable rows={summaryMS}  label="MS | Summary by Company" />
+      <GrowthTable  rows={rowsMS}     label="MS | RO-wise" />
+      <SummaryTable rows={summaryHSD} label="HSD | Summary by Company" />
+      <GrowthTable  rows={rowsHSD}    label="HSD | RO-wise" />
     </div>
   );
 })()}
