@@ -224,6 +224,96 @@ function computeCumulativeMarketShareForArea(outlets, startMonth, endMonth) {
   })).sort((a,b)=>b.share - a.share);
 }
 
+// === NEW: growth utilities for MS & HSD ===
+function buildMonthlyGrowthRowsMS(stations) {
+  return (stations || []).map(s => {
+    const thisYear = Number(s.ms || 0);
+    const lastYear = Number(s.ms_ly || 0);
+    const growth = thisYear - lastYear;
+    const growthPct = lastYear === 0 ? (thisYear === 0 ? 0 : 100) : ((growth / lastYear) * 100);
+    return { name: s.name || "", company: s.company || "", area: s.trading_area || "", thisYear, lastYear, growth, growthPct };
+  });
+}
+
+function buildMonthlyGrowthRowsHSD(stations) {
+  return (stations || []).map(s => {
+    const thisYear = Number(s.hsd || 0);
+    const lastYear = Number(s.hsd_ly || 0);
+    const growth = thisYear - lastYear;
+    const growthPct = lastYear === 0 ? (thisYear === 0 ? 0 : 100) : ((growth / lastYear) * 100);
+    return { name: s.name || "", company: s.company || "", area: s.trading_area || "", thisYear, lastYear, growth, growthPct };
+  });
+}
+
+function buildCumulativeGrowthRowsMS(stations, startMonth, endMonth) {
+  return (stations || []).map(s => {
+    const sums = cumulativeForOutletRows(s.rows || [], startMonth, endMonth);
+    const thisYear = Number(sums.ms || 0);
+    const lastYear = Number(sums.ms_ly || 0);
+    const growth = thisYear - lastYear;
+    const growthPct = lastYear === 0 ? (thisYear === 0 ? 0 : 100) : ((growth / lastYear) * 100);
+    return { name: s.name || "", company: s.company || "", area: s.trading_area || "", thisYear, lastYear, growth, growthPct };
+  });
+}
+
+function buildCumulativeGrowthRowsHSD(stations, startMonth, endMonth) {
+  return (stations || []).map(s => {
+    const sums = cumulativeForOutletRows(s.rows || [], startMonth, endMonth);
+    const thisYear = Number(sums.hsd || 0);
+    const lastYear = Number(sums.hsd_ly || 0);
+    const growth = thisYear - lastYear;
+    const growthPct = lastYear === 0 ? (thisYear === 0 ? 0 : 100) : ((growth / lastYear) * 100);
+    return { name: s.name || "", company: s.company || "", area: s.trading_area || "", thisYear, lastYear, growth, growthPct };
+  });
+}
+
+
+function sortRowsByGrowth(rows, direction) {
+  const copy = [...(rows || [])];
+  copy.sort((a, b) => direction === 'asc' ? (a.growth - b.growth) : (b.growth - a.growth));
+  return copy;
+}
+
+// Simple reusable table (columns fixed per your spec)
+function GrowthTable({ rows, label }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <h4 style={{ margin: '0 0 6px 0' }}>{label}</h4>
+      <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+<thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+  <tr>
+    <th style={{ padding: '8px 6px' }}>RO name</th>
+    <th style={{ padding: '8px 6px' }}>Company</th>
+    <th style={{ padding: '8px 6px' }}>Trading area</th>
+    <th style={{ padding: '8px 6px' }}>This year sales</th>
+    <th style={{ padding: '8px 6px' }}>Last year sales</th>
+    <th style={{ padding: '8px 6px' }}>Growth</th>
+    <th style={{ padding: '8px 6px' }}>Growth %</th>
+  </tr>
+</thead>
+
+          <tbody>
+            {(!rows || rows.length === 0) ? (
+              <tr><td colSpan={6} style={{ padding: 16, color: '#64748B' }}>No matching ROs.</td></tr>
+            ) : rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                <td style={{ padding: '8px 6px' }}>{r.name}</td>
+                <td style={{ padding: '8px 6px' }}>{r.company}</td> {/* NEW */}
+                <td style={{ padding: '8px 6px' }}>{r.area}</td>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{Number(r.thisYear || 0).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.lastYear || 0).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px' }}>{(Number(r.growth) >= 0 ? '+' : '') + Number(r.growth).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.growthPct).toFixed(1)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 
 /* ---------- main app ---------- */
 export default function FuelMapApp() {
@@ -773,10 +863,78 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 </div>
               </div>
 
+                {/* NEW: four growth pages */}
+  <div style={{ display: 'flex', gap: 6, marginLeft: 6 }}>
+    <button
+      onClick={() => setPageIndex(2)}
+      title="Positive growth (selected month)"
+      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F0F9FF', cursor:'pointer' }}
+    >+M</button>
+    <button
+      onClick={() => setPageIndex(3)}
+      title="Positive growth (cumulative Apr → selected)"
+      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFDF5', cursor:'pointer' }}
+    >+C</button>
+    <button
+      onClick={() => setPageIndex(4)}
+      title="Negative growth (selected month)"
+      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF2F2', cursor:'pointer' }}
+    >−M</button>
+    <button
+      onClick={() => setPageIndex(5)}
+      title="Negative growth (cumulative Apr → selected)"
+      style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFE4E6', cursor:'pointer' }}
+    >−C</button>
+  </div>
+
+
               {/* Month selector */}
               <div style={{ marginTop: 8 }}>
                 <MonthSelector records={records} value={latestMonth} onChange={(m) => setLatestMonth(m)} />
               </div>
+
+{/* NEW: Growth pages (pageIndex 2..5) — Month Selector stays above */}
+{pageIndex >= 2 && (() => {
+  const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
+  const startMonth = `${year}-04`;
+
+  // Build rows
+  const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
+  const monthlyHSD = buildMonthlyGrowthRowsHSD(stations);
+  const cumMS      = buildCumulativeGrowthRowsMS(stations, startMonth, latestMonth);
+  const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
+
+  // Choose set + sort
+  let rowsMS = [];
+  let rowsHSD = [];
+  if (pageIndex === 2) { // positive, monthly — descending
+    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth > 0), 'desc');
+rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth > 0), 'desc');
+  } else if (pageIndex === 3) { // positive, cumulative — descending
+    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth > 0), 'desc');
+rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth > 0), 'desc');
+  } else if (pageIndex === 4) { // negative, monthly — ascending
+    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth < 0), 'asc');
+rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth < 0), 'asc');
+  } else if (pageIndex === 5) { // negative, cumulative — ascending
+    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth < 0), 'asc');
+rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth < 0), 'asc');
+  }
+
+  const title =
+    pageIndex === 2 ? 'Selected Month — Positive Growth' :
+    pageIndex === 3 ? 'Cumulative (Apr → Selected) — Positive Growth' :
+    pageIndex === 4 ? 'Selected Month — Negative Growth' :
+                      'Cumulative (Apr → Selected) — Negative Growth';
+
+  return (
+    <div style={{ marginTop: 14 }}>
+      <h3 style={{ margin: '0 0 8px 0' }}>{title}</h3>
+      <GrowthTable rows={rowsMS}  label="MS" />
+      <GrowthTable rows={rowsHSD} label="HSD" />
+    </div>
+  );
+})()}
 
 
 <div style={{ marginTop: 16 }}>
