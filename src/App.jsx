@@ -581,7 +581,7 @@ onMouseLeave={e => {
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
       <input
         aria-label="Search outlets, trading area or company"
-        placeholder="Search outlet, trading area or city — e.g. Neeliyat, Valanchery"
+        placeholder="Search outlet, trading area - e.g. Alkos, Valanchery"
         value={searchQuery}
         onChange={(e) => {
           setSearchQuery(e.target.value);
