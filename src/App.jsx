@@ -41,6 +41,44 @@ if (typeof document !== "undefined") {
 .cum-toggle .arrow { transition: transform .22s ease; }
 .cum-toggle.active .arrow { transform: rotate(180deg); }
 
+/* Circular AI button (already added earlier) remains */
+
+/* Close button (top-right in chat mode) */
+.ai-close{
+  position:absolute; top:8px; right:8px;
+  width:36px; height:36px; border-radius:50%;
+  border:1px solid #E5E7EB; background:#FFF; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.08);
+}
+
+/* Bottom-centered input bar */
+.ai-inputbar{
+  position:absolute; left:50%; bottom:12px; transform:translateX(-50%);
+  width:min(740px, 90%); display:flex; gap:8px;
+  background:rgba(255,255,255,0.9); backdrop-filter: blur(8px);
+  border:1px solid #E5E7EB; border-radius:999px; padding:8px 10px;
+  box-shadow: 0 10px 30px rgba(2, 6, 23, 0.12);
+}
+.ai-inputbar input{
+  flex:1; border:none; outline:none; background:transparent;
+  padding:8px 10px; font-size:14px; color:#0F172A;
+}
+.ai-send{
+  border:none; border-radius:999px; padding:8px 14px;
+  background:#0EA5E9; color:#fff; font-weight:700; cursor:pointer;
+}
+
+/* Reply bubble above input */
+.ai-reply{
+  position:absolute; left:50%; bottom:72px; transform:translateX(-50%);
+  width:min(760px, 92%);
+  background:#FFF; border:1px solid #E5E7EB; border-radius:16px;
+  padding:12px 14px; box-shadow: 0 12px 36px rgba(2,6,23,0.12);
+  max-height:55vh; overflow:auto; white-space:pre-wrap; font-size:13px; color:#0F172A;
+}
+
+
     `;
     document.head.appendChild(s);
   }
@@ -523,6 +561,37 @@ function DeselectOnMapClick({ onDeselect }) {
   return null; // no UI
 }
 
+function buildInsightsPayload({ latestMonth, stations }) {
+  const year = (latestMonth || "").split("-")[0];
+  const startMonth = `${year}-04`;
+
+  const msMonthly  = marketShareRowsAllMonthly_MS(stations).slice(0,12);
+  const hsdMonthly = marketShareRowsAllMonthly_HSD(stations).slice(0,12);
+  const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth).slice(0,12);
+  const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth).slice(0,12);
+
+  const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
+  const monthlyHSD = buildMonthlyGrowthRowsHSD(stations);
+  const cumMS      = buildCumulativeGrowthRowsMS(stations, startMonth, latestMonth);
+  const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
+
+  return {
+    context: { latestMonth, startMonth },
+    marketShare: { msMonthly, hsdMonthly, msCum, hsdCum },
+    growth: {
+      msTopPos: monthlyMS.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
+      msTopNeg: monthlyMS.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
+      hsdTopPos: monthlyHSD.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
+      hsdTopNeg: monthlyHSD.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
+      msCumTopPos: cumMS.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
+      msCumTopNeg: cumMS.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
+      hsdCumTopPos: cumHSD.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
+      hsdCumTopNeg: cumHSD.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
+    }
+  };
+}
+
+
 /* ---------- main app ---------- */
 export default function FuelMapApp() {
   const [records, setRecords] = useState(() => loadRecords());
@@ -555,6 +624,105 @@ const cumulativeSums = useMemo(() => {
 // Add near other useState hooks in FuelMapApp
 const [searchQuery, setSearchQuery] = useState('');
 const [suggestions, setSuggestions] = useState([]);
+
+// === AI view restore helpers ===
+const rightPaneRef = useRef(null);
+const prevViewRef = useRef(null);
+
+function openAI() {
+  // snapshot the current view so we can restore later
+  prevViewRef.current = {
+    selected,
+    pageIndex,
+    scrollTop: rightPaneRef.current?.scrollTop ?? 0,
+  };
+  setAiMode(true);
+  setAiReply("");
+  setAiInput("");
+}
+
+function closeAI() {
+  const prev = prevViewRef.current;
+  setAiMode(false);
+  setAiReply("");
+  setAiInput("");
+
+  if (prev) {
+    // restore previous selection and page
+    setSelected(prev.selected ?? null);
+    setPageIndex(typeof prev.pageIndex === "number" ? prev.pageIndex : 0);
+
+    // restore scroll after the panel re-renders
+    setTimeout(() => {
+      if (rightPaneRef.current) {
+        rightPaneRef.current.scrollTop = prev.scrollTop ?? 0;
+      }
+    }, 0);
+  }
+}
+
+
+const [aiMode, setAiMode] = useState(false);
+const [aiInput, setAiInput] = useState("");
+const [chatHistory, setChatHistory] = useState([]); 
+const [aiBusy, setAiBusy] = useState(false);
+
+async function handleAISubmit(e) {
+  e.preventDefault();
+  const q = aiInput.trim();
+  if (!q) return;
+
+  // add user message
+  setChatHistory(prev => [...prev, { role: "user", content: q }]);
+  setAiInput("");
+  setAiBusy(true);
+
+  try {
+    const payload = buildInsightsPayload({ latestMonth, stations });
+    payload.question = q;
+
+    const res = await fetch("/api/insights", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { text } = await res.json();
+
+    // add assistant reply
+    setChatHistory(prev => [...prev, { role: "assistant", content: text || "(no answer)" }]);
+  } catch (err) {
+    setChatHistory(prev => [...prev, { role: "assistant", content: `Failed: ${err.message}` }]);
+  } finally {
+    setAiBusy(false);
+  }
+}
+
+
+const [insights, setInsights] = useState("");
+const [loadingInsights, setLoadingInsights] = useState(false);
+
+async function generateInsights() {
+  setLoadingInsights(true);
+  try {
+    const payload = buildInsightsPayload({ latestMonth, stations });
+    const res = await fetch("http://localhost:3001/api/insights", { // <— absolute URL
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { text } = await res.json();
+    setInsights(text || "(No text returned)");
+  } catch (e) {
+    console.error("Insights error:", e);
+    setInsights(`Failed to generate insights: ${e.message}`);
+  } finally {
+    setLoadingInsights(false);
+  }
+}
+
+
 
 // small helper to create suggestion objects
 function makeSuggestion(label, type, lat = null, lng = null, station = null) {
@@ -1032,216 +1200,304 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
       </div>
 
-      <aside style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
-        <div style={{ padding: 16 }}>
+      <aside ref={rightPaneRef}style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
+<div style={{ position:'relative', padding: 16, height: '100%' }}>
+  {aiMode ? (
+    /* ================= AI CHAT ONLY ================ */
+    <div style={{ position:'relative', height:'calc(100vh - 32px)' }}>
+      {/* Close (top-right) */}
+      <button
+        aria-label="Close AI"
+        className="ai-close"
+        onClick={closeAI}
+      >✕</button>
 
-{/* Month selector should always be visible */}
-<div style={{ marginBottom: 8 }}>
-  <MonthSelector records={records} value={latestMonth} onChange={(m) => setLatestMonth(m)} />
-</div>
-{!selected ? (
-  <div>
-    {/* Buttons visible when NO RO is selected */}
-    <div style={{ display: 'flex', gap: 6 }}>
-      <button
-        onClick={() => setPageIndex(2)}
-        title="Positive growth (selected month)"
-        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F0F9FF', cursor:'pointer' }}
-      >+M</button>
-      <button
-        onClick={() => setPageIndex(3)}
-        title="Positive growth (cumulative Apr → selected)"
-        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFDF5', cursor:'pointer' }}
-      >+C</button>
-      <button
-        onClick={() => setPageIndex(4)}
-        title="Negative growth (selected month)"
-        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF2F2', cursor:'pointer' }}
-      >−M</button>
-      <button
-        onClick={() => setPageIndex(5)}
-        title="Negative growth (cumulative Apr → selected)"
-        style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFE4E6', cursor:'pointer' }}
-      >−C</button>
+      {/* Center hint (only if no chat yet) */}
+{chatHistory.length === 0 && (
+  <div style={{
+    position:'absolute',
+    inset:0,
+    display:'flex',
+    alignItems:'center',
+    justifyContent:'center',
+    padding:'24px',
+    pointerEvents:'none'
+  }}>
+    <div style={{ color:'#64748B', textAlign:'center', maxWidth:520 }}>
+      Ask about monthly vs cumulative performance, biggest movers,
+      market-share shifts, or mop-up guidance.
     </div>
-    <button
-  onClick={() => setPageIndex(6)}
-  title="Market share (selected month)"
-  style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F8FAFC', cursor:'pointer' }}
->Market share</button>
-
-<button
-  onClick={() => setPageIndex(7)}
-  title="Cumulative Market share (Apr → selected)"
-  style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFF7ED', cursor:'pointer' }}
->Cumulative Market share</button>
-
-
-  {/* Growth/MarketShare pages when no RO is selected */}
-{pageIndex >= 2 && (() => {
-  const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
-  const startMonth = `${year}-04`;
-
-  // Build data for Growth pages
-  const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
-  const monthlyHSD = buildMonthlyGrowthRowsHSD(stations);
-  const cumMS      = buildCumulativeGrowthRowsMS(stations, startMonth, latestMonth);
-  const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
-
-  // Build data for Market share pages (All stations)
-  const msMonthly  = marketShareRowsAllMonthly_MS(stations);
-  const hsdMonthly = marketShareRowsAllMonthly_HSD(stations);
-  const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth);
-  const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth);
-
-  // Decide which page to show
-  if (pageIndex === 6) {
-    return (
-      <div style={{ marginTop: 14 }}>
-        <h3 style={{ margin: '0 0 8px 0' }}>Market share | Selected Month</h3>
-        <MarketShareTable rows={msMonthly}  label="MS | Company-wiseMarket Share" />
-        <MarketShareTable rows={hsdMonthly} label="HSD | Company-wise Market Share" />
-      </div>
-    );
-  }
-  if (pageIndex === 7) {
-    return (
-      <div style={{ marginTop: 14 }}>
-        <h3 style={{ margin: '0 0 8px 0' }}>Cumulative Market share — Apr → {formatMonth(latestMonth)}</h3>
-        <MarketShareTable rows={msCum}  label="MS | Company Market Share (Cumulative)" />
-        <MarketShareTable rows={hsdCum} label="HSD | Company Market Share (Cumulative)" />
-      </div>
-    );
-  }
-
-  // Existing Growth pages (+M/+C/−M/−C)
-  let rowsMS = [], rowsHSD = [];
-  if (pageIndex === 2) {
-    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth > 0), 'desc');
-    rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth > 0), 'desc');
-  } else if (pageIndex === 3) {
-    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth > 0), 'desc');
-    rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth > 0), 'desc');
-  } else if (pageIndex === 4) {
-    rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth < 0), 'asc');
-    rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth < 0), 'asc');
-  } else if (pageIndex === 5) {
-    rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth < 0), 'asc');
-    rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth < 0), 'asc');
-  }
-
-  const title =
-    pageIndex === 2 ? 'Selected Month | Positive Growth' :
-    pageIndex === 3 ? 'Cumulative (Apr → Selected) | Positive Growth' :
-    pageIndex === 4 ? 'Selected Month | Negative Growth' :
-                      'Cumulative (Apr → Selected) | Negative Growth';
-
-  const summaryMS  = summarizeByCompany(rowsMS);
-  const summaryHSD = summarizeByCompany(rowsHSD);
-
-  return (
-    <div style={{ marginTop: 14 }}>
-      <h3 style={{ margin: '0 0 8px 0' }}>{title}</h3>
-      <SummaryTable rows={summaryMS}  label="MS | Summary by Company" />
-      <GrowthTable  rows={rowsMS}     label="MS | RO-wise" />
-      <SummaryTable rows={summaryHSD} label="HSD | Summary by Company" />
-      <GrowthTable  rows={rowsHSD}    label="HSD | RO-wise" />
-    </div>
-  );
-})()}
   </div>
-) : (
-  <div>
+)}
 
-              {/* Header: name + nav buttons */}
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div>
-                  <h2 style={{ margin: 0 }}>{selected.name}</h2>
-                  <div style={{ color: '#64748B', marginTop: 6 }}>{selected.company} • {selected.trading_area}</div>
+
+      {/* Reply bubble */}
+      <div style={{ overflowY: "auto", paddingBottom: 60, height: "calc(100% - 60px)" }}>
+  {chatHistory.map((msg, i) => (
+    <div
+      key={i}
+      style={{
+        maxWidth: "80%",
+        margin: msg.role === "user" ? "8px 0 8px auto" : "8px auto 8px 0",
+        padding: "10px 14px",
+        borderRadius: 12,
+        background: msg.role === "user" ? "#E0F2FE" : "#F1F5F9",
+        alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
+        whiteSpace: "pre-wrap",
+        fontSize: 14,
+        lineHeight: 1.5,
+      }}
+    >
+      {msg.content}
+    </div>
+  ))}
+</div>
+
+      {/* Bottom-centered input */}
+      <form className="ai-inputbar" onSubmit={handleAISubmit}>
+        <input
+          autoFocus
+          value={aiInput}
+          onChange={(e)=>setAiInput(e.target.value)}
+          placeholder="Ask your question…"
+          aria-label="Ask AI"
+        />
+        <button type="submit" className="ai-send" disabled={aiBusy}>
+          {aiBusy ? "…" : "Send"}
+        </button>
+      </form>
+    </div>
+  ) : (
+    /* ============ NON-AI: EVERYTHING ELSE ============ */
+    <>
+      {/* Top-right AI open button (same spot as ✕) */}
+      <button
+        aria-label="Open AI"
+        className="ai-close"
+        onClick={openAI}
+      >AI</button>
+
+      {/* Month selector (hidden in AI mode) */}
+      <div style={{ marginBottom: 8 }}>
+        <MonthSelector
+          records={records}
+          value={latestMonth}
+          onChange={(m) => setLatestMonth(m)}
+        />
+      </div>
+
+      {/* Right pane content */}
+      {!selected ? (
+        <div>
+          {/* Buttons visible when NO RO is selected */}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              onClick={() => setPageIndex(2)}
+              title="Positive growth (selected month)"
+              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F0F9FF', cursor:'pointer' }}
+            >+M</button>
+            <button
+              onClick={() => setPageIndex(3)}
+              title="Positive growth (cumulative Apr → selected)"
+              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFDF5', cursor:'pointer' }}
+            >+C</button>
+            <button
+              onClick={() => setPageIndex(4)}
+              title="Negative growth (selected month)"
+              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF2F2', cursor:'pointer' }}
+            >−M</button>
+            <button
+              onClick={() => setPageIndex(5)}
+              title="Negative growth (cumulative Apr → selected)"
+              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFE4E6', cursor:'pointer' }}
+            >−C</button>
+          </div>
+
+          <button
+            onClick={() => setPageIndex(6)}
+            title="Market share (selected month)"
+            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F8FAFC', cursor:'pointer' }}
+          >Market share</button>
+
+          <button
+            onClick={() => setPageIndex(7)}
+            title="Cumulative Market share (Apr → selected)"
+            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFF7ED', cursor:'pointer' }}
+          >Cumulative Market share</button>
+
+          {/* Growth/MarketShare pages when no RO is selected */}
+          {pageIndex >= 2 && (() => {
+            const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
+            const startMonth = `${year}-04`;
+
+            // Build data for Growth pages
+            const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
+            const monthlyHSD = buildMonthlyGrowthRowsHSD(stations);
+            const cumMS      = buildCumulativeGrowthRowsMS(stations, startMonth, latestMonth);
+            const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
+
+            // Build data for Market share pages (All stations)
+            const msMonthly  = marketShareRowsAllMonthly_MS(stations);
+            const hsdMonthly = marketShareRowsAllMonthly_HSD(stations);
+            const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth);
+            const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth);
+
+            // Decide which page to show
+            if (pageIndex === 6) {
+              return (
+                <div style={{ marginTop: 14 }}>
+                  <h3 style={{ margin: '0 0 8px 0' }}>Market share | Selected Month</h3>
+                  <MarketShareTable rows={msMonthly}  label="MS | Company-wise Market Share" />
+                  <MarketShareTable rows={hsdMonthly} label="HSD | Company-wise Market Share" />
                 </div>
-
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <button
-                    onClick={() => setPageIndex(0)}
-                    aria-label="Monthly view"
-                    title="Monthly view"
-                    className="nav-btn"
-                    style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 0 ? 1 : 0.7 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
-
-                  <button
-                    onClick={() => setPageIndex(1)}
-                    aria-label="Cumulative view"
-                    title="Cumulative (Apr → latest)"
-                    className="nav-btn"
-                    style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 1 ? 1 : 0.7 }}
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </button>
+              );
+            }
+            if (pageIndex === 7) {
+              return (
+                <div style={{ marginTop: 14 }}>
+                  <h3 style={{ margin: '0 0 8px 0' }}>
+                    Cumulative Market share | Apr → {formatMonth(latestMonth)}
+                  </h3>
+                  <MarketShareTable rows={msCum}  label="MS | Company Market Share (Cumulative)" />
+                  <MarketShareTable rows={hsdCum} label="HSD | Company Market Share (Cumulative)" />
                 </div>
+              );
+            }
+
+            // Existing Growth pages (+M/+C/−M/−C)
+            let rowsMS = [], rowsHSD = [];
+            if (pageIndex === 2) {
+              rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth > 0), 'desc');
+              rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth > 0), 'desc');
+            } else if (pageIndex === 3) {
+              rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth > 0), 'desc');
+              rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth > 0), 'desc');
+            } else if (pageIndex === 4) {
+              rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth < 0), 'asc');
+              rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth < 0), 'asc');
+            } else if (pageIndex === 5) {
+              rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth < 0), 'asc');
+              rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth < 0), 'asc');
+            }
+
+            const title =
+              pageIndex === 2 ? 'Selected Month | Positive Growth' :
+              pageIndex === 3 ? 'Cumulative (Apr → Selected) | Positive Growth' :
+              pageIndex === 4 ? 'Selected Month | Negative Growth' :
+                                'Cumulative (Apr → Selected) | Negative Growth';
+
+            const summaryMS  = summarizeByCompany(rowsMS);
+            const summaryHSD = summarizeByCompany(rowsHSD);
+
+            return (
+              <div style={{ marginTop: 14 }}>
+                <h3 style={{ margin: '0 0 8px 0' }}>{title}</h3>
+                <SummaryTable rows={summaryMS}  label="MS | Summary by Company" />
+                <GrowthTable  rows={rowsMS}     label="MS | RO-wise" />
+                <SummaryTable rows={summaryHSD} label="HSD | Summary by Company" />
+                <GrowthTable  rows={rowsHSD}    label="HSD | RO-wise" />
               </div>
+            );
+          })()}
+        </div>
+      ) : (
+        <AnimatePresence mode="wait" initial={false}>
+    <motion.div
+      key={selected?.outlet_id ?? selected?.id ?? outletKeyForRow(selected)}
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -12 }}
+      transition={{ duration: 0.3 }}
+    >
+        <div>
+          {/* Header: name + nav buttons */}
 
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+            <div>
+              <h2 style={{ margin: 0 }}>{selected.name}</h2>
+              <div style={{ color: '#64748B', marginTop: 6 }}>
+                {selected.company} • {selected.trading_area}
+              </div>
+            </div>
 
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <button
+                onClick={() => setPageIndex(0)}
+                aria-label="Monthly view"
+                title="Monthly view"
+                className="nav-btn"
+                style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 0 ? 1 : 0.7 }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
 
+              <button
+                onClick={() => setPageIndex(1)}
+                aria-label="Cumulative view"
+                title="Cumulative (Apr → latest)"
+                className="nav-btn"
+                style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 1 ? 1 : 0.7 }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+          {/* Month / Cumulative toggle */} 
+          <div style={{ marginTop: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
+              <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Month</div>
+              <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
+              <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
+              <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS Change</div>
+              <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD</div>
+              <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD LY</div>
+              <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD Change</div>
+            </div>
 
-<div style={{ marginTop: 16 }}>
-  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
-    <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Month</div>
-    <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
-    <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
-    <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS Change</div>
-    <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD</div>
-    <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD LY</div>
-    <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD Change</div>
-  </div>
+            <AnimatePresence mode="wait">
+              {pageIndex === 1 ? (
+                <motion.div
+                  key="cumulative"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.3 }}
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
+                >
+                  <div style={{ fontWeight: 600 }}>Cumulative</div>
+                  <div style={{ fontWeight: 700 }}>{(cumulativeSums?.ms ?? 0).toLocaleString()}</div>
+                  <div>{(cumulativeSums?.ms_ly ?? 0).toLocaleString()}</div>
+                  <div><VolumeChange curr={cumulativeSums?.ms ?? 0} prev={cumulativeSums?.ms_ly ?? 0} /></div>
+                  <div style={{ fontWeight: 700 }}>{(cumulativeSums?.hsd ?? 0).toLocaleString()}</div>
+                  <div>{(cumulativeSums?.hsd_ly ?? 0).toLocaleString()}</div>
+                  <div><VolumeChange curr={cumulativeSums?.hsd ?? 0} prev={cumulativeSums?.hsd_ly ?? 0} /></div>
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="monthly"
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.3 }}
+                  style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
+                >
+                  <div>{formatMonth(selected.month)}</div>
+                  <div style={{ fontWeight: 700 }}>{selected.ms.toLocaleString()}</div>
+                  <div>{selected.ms_ly.toLocaleString()}</div>
+                  <div><VolumeChange curr={selected.ms} prev={selected.ms_ly} /></div>
+                  <div style={{ fontWeight: 700 }}>{selected.hsd.toLocaleString()}</div>
+                  <div>{selected.hsd_ly.toLocaleString()}</div>
+                  <div><VolumeChange curr={selected.hsd} prev={selected.hsd_ly} /></div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
 
-  <AnimatePresence mode="wait">
-    {pageIndex === 1 ? (
-      <motion.div
-        key="cumulative"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.3 }}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
-      >
-        <div style={{ fontWeight: 600 }}>Cumulative</div>
-        <div style={{ fontWeight: 700 }}>{(cumulativeSums?.ms ?? 0).toLocaleString()}</div>
-        <div>{(cumulativeSums?.ms_ly ?? 0).toLocaleString()}</div>
-        <div><VolumeChange curr={cumulativeSums?.ms ?? 0} prev={cumulativeSums?.ms_ly ?? 0} /></div>
-        <div style={{ fontWeight: 700 }}>{(cumulativeSums?.hsd ?? 0).toLocaleString()}</div>
-        <div>{(cumulativeSums?.hsd_ly ?? 0).toLocaleString()}</div>
-        <div><VolumeChange curr={cumulativeSums?.hsd ?? 0} prev={cumulativeSums?.hsd_ly ?? 0} /></div>
-      </motion.div>
-    ) : (
-      <motion.div
-        key="monthly"
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.3 }}
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
-      >
-        <div>{formatMonth(selected.month)}</div>
-        <div style={{ fontWeight: 700 }}>{selected.ms.toLocaleString()}</div>
-        <div>{selected.ms_ly.toLocaleString()}</div>
-        <div><VolumeChange curr={selected.ms} prev={selected.ms_ly} /></div>
-        <div style={{ fontWeight: 700 }}>{selected.hsd.toLocaleString()}</div>
-        <div>{selected.hsd_ly.toLocaleString()}</div>
-        <div><VolumeChange curr={selected.hsd} prev={selected.hsd_ly} /></div>
-      </motion.div>
-    )}
-  </AnimatePresence>
-</div>
-
-
-              {/* Trading Area - Outlets */}
+           {/* Trading Area - Outlets */}
               <div style={{ marginTop: 20 }}>
   <h3 style={{ margin: '0 0 8px 0', display: "flex", alignItems: "center", gap: 6 }}>
   Trading Area - Outlets
@@ -1381,9 +1637,18 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   </table>
                 </div>
               </div>
-            </div>
-          )}
+
+          {/* Trading Area - Outlets */}
+          {/* (unchanged table and market share sections from your file) */}
+          {/* ... paste your existing Trading Area - Outlets and Market Share blocks here unchanged ... */}
         </div>
+          </motion.div>
+  </AnimatePresence>
+      )}
+    </>
+  )}
+</div>
+
       </aside>
     </div>
   );
