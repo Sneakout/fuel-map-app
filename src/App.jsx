@@ -84,7 +84,30 @@ if (typeof document !== "undefined") {
   }
 }
 
+function upsertMsg(setter, newMsg) {
+  setter((prev = []) => {
+    const i = prev.findIndex(m => m.id === newMsg.id);
+    if (i >= 0) {
+      const next = prev.slice();
+      next[i] = newMsg;
+      return next;
+    }
+    return [...prev, newMsg];
+  });
+}
 
+const prettyHeader = (h) => {
+  const k = (h || "").toString().trim().toLowerCase();
+
+  if (k === "ms" || k === "total_ms") return "MS (KL)";
+  if (k === "hsd" || k === "total_hsd") return "HSD (KL)";
+  if (k === "name") return "RO name";
+  if (k === "outlet_id") return "RO code";
+  if (k === "trading_area") return "Trading area";
+  if (k === "company") return "Company";
+
+  return h;
+};
 
 /* ---------- helpers ---------- */
 // helper to produce a stable key for an outlet row/object
@@ -98,6 +121,72 @@ function outletKeyForRow(r) {
   const lngr = Math.round(lng * 1e5) / 1e5;
   return `${name}::${latr}::${lngr}`;
 }
+
+// Clean, brand-aligned AI reply
+function AIReply({ text }) {
+  // strip common markdown noise quickly
+  const cleaned = (text || "")
+    .replace(/\*\*/g, "")            // remove bold markers
+    .replace(/^-\s+/gm, "")          // remove leading dash bullets
+    .trim();
+
+  // naive sectionization: split on "This month" / "Cumulative"
+  const sections = cleaned.split(/\n\s*\n/).map(s => s.trim());
+
+  return (
+    <div style={{
+      fontFamily: `ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue"`,
+      fontSize: 14,
+      lineHeight: 1.6,
+      color: '#0F172A'
+    }}>
+      {sections.map((block, i) => {
+        // make compact title if first line looks like a question
+        const lines = block.split('\n');
+        const head = lines[0] || '';
+        const rest = lines.slice(1);
+
+        return (
+          <div key={i} style={{ marginBottom: 10 }}>
+            {/* section header if it looks like a label */}
+            {/^this month/i.test(head) || /^cumulative/i.test(head) ? (
+              <>
+                <div style={{ fontSize: 12, letterSpacing: .2, color: '#64748B', textTransform: 'uppercase', marginBottom: 4 }}>
+                  {head.replace(/:$/, '')}
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {rest.map((ln, j) => {
+                    // e.g. "IOC leads with 43.99% ... (down by 1.80% YoY)."
+                    const m = ln.match(/^([A-Za-z&.\s]+)\s+(.*)$/);
+                    const brand = m ? m[1].trim().replace(/:$/, '') : null;
+                    const detail = m ? m[2].trim() : ln.trim();
+                    return (
+                      <div key={j} style={{
+                        display:'grid',
+                        gridTemplateColumns: '140px 1fr',
+                        gap: 8,
+                        padding: '6px 8px',
+                        borderRadius: 8,
+                        background: 'rgba(241,245,249,.5)' // slate-100-ish
+                      }}>
+                        <div style={{ fontWeight: 700 }}>{brand || '—'}</div>
+                        <div>{detail.replace(/^\-\s*/, '')}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              // fallback paragraph
+              <div style={{ whiteSpace: 'pre-wrap' }}>{block}</div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 
 function loadRecords() {
   try {
@@ -561,36 +650,174 @@ function DeselectOnMapClick({ onDeselect }) {
   return null; // no UI
 }
 
+function RenderSummary({ text }) {
+
+  if (!text) return null;
+
+  // strip any leaked <think>…</think>
+  let t = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+
+  // If the model wrote "Here is a summary ...:" keep only what follows the colon once
+  const colonIdx = t.indexOf(":");
+  if (colonIdx !== -1 && colonIdx < 120) t = t.slice(colonIdx + 1).trim();
+
+  // Normalize to line-based bullets: turn inline "* foo * bar" into separate lines
+  // and keep real markdown bullets if already line-separated.
+  const hasLineBullets = /^\s*[-*•]\s+/m.test(t);
+  const items = hasLineBullets
+    ? t.split(/\n+/).map(s => s.trim()).filter(s => /^\s*[-*•]\s+/.test(s)).map(s => s.replace(/^\s*[-*•]\s+/, ""))
+    : t.split(/\s*\*\s+/).map(s => s.trim()).filter(Boolean);
+
+  if (items.length === 0) {
+    // fallback: just show the paragraph
+    return <p style={{ margin: "0 0 8px", color: "#475569", fontSize: 13 }}>{t}</p>;
+  }
+
+  return (
+    <ul style={{ margin: "0 0 8px 16px", padding: 0, color: "#475569", fontSize: 13 }}>
+      {items.map((it, i) => (
+        <li key={i} style={{ marginBottom: 4 }}>{it.replace(/\s*\.$/, ".")}</li>
+      ))}
+    </ul>
+  );
+}
+
+const SHOW_SQL = false; // <- keep false to hide SQL
+
+
+
+function SQLResult({ sql, columns = [], rows = [], summary = "" }) {
+  const stringCols = new Set(
+    columns.map(c => (c || "").toString().trim().toLowerCase()).filter(Boolean)
+  );
+  const isStringCol = (colName) => {
+    const k = (colName || "").toString().trim().toLowerCase();
+    // treat these as text (no toLocaleString)
+    return k === "ro code" || k === "outlet_id" || k === "ro name" || k === "name" || k === "month";
+  };
+
+  return (
+    <div style={{ fontSize: 13, color: "#0F172A" }}>
+      {summary && <RenderSummary text={summary} />}
+
+      {SHOW_SQL && (
+        <div style={{
+          background: "#0B1020", color: "#E5E7EB", padding: 10, borderRadius: 8,
+          fontFamily: "ui-monospace, Menlo, Monaco, Consolas, 'Courier New', monospace",
+          fontSize: 12, marginBottom: 10, overflowX: "auto"
+        }}>
+          {sql}
+        </div>
+      )}
+
+      <div style={{ background: "#FFF", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead style={{ position: "sticky", top: 0, background: "#F8FAFC" }}>
+            <tr>
+              {columns.map((c, i) => (
+                <th key={i} style={{ padding: "8px 10px", textAlign: "left", fontSize: 12, color: "#64748B", borderBottom: "1px solid #E5E7EB" }}>
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <tr><td colSpan={columns.length} style={{ padding: 12, color: "#64748B" }}>No results.</td></tr>
+            ) : rows.map((r, ri) => (
+              <tr key={ri} style={{ borderTop: "1px solid #F1F5F9" }}>
+                {r.map((cell, ci) => {
+                  const header = columns[ci] || "";
+                  const showAsText = isStringCol(header);
+                  return (
+                    <td key={ci} style={{ padding: "8px 10px", fontSize: 13 }}>
+                      {showAsText
+                        ? String(cell ?? "")
+                        : (typeof cell === "number" ? cell.toLocaleString("en-IN") : String(cell ?? ""))
+                      }
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+
+
 function buildInsightsPayload({ latestMonth, stations }) {
+  // months (descending: newest first)
+  const months = Array.from(
+    new Set(
+      stations.flatMap(s => (s.rows || []).map(r => (r.month || '').toString().trim()).filter(Boolean))
+    )
+  ).sort((a,b)=> a > b ? -1 : a < b ? 1 : 0);
+
   const year = (latestMonth || "").split("-")[0];
   const startMonth = `${year}-04`;
 
-  const msMonthly  = marketShareRowsAllMonthly_MS(stations).slice(0,12);
-  const hsdMonthly = marketShareRowsAllMonthly_HSD(stations).slice(0,12);
-  const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth).slice(0,12);
-  const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth).slice(0,12);
+  // compact outlet object to keep payload small but complete
+  const outlets = stations.map(s => ({
+    id: s.outlet_id || s.id || s.name,
+    name: s.name,
+    company: s.company,
+    area: s.trading_area,
+    lat: s.lat, lng: s.lng,
+    latest: { month: s.month, ms: s.ms, ms_ly: s.ms_ly, hsd: s.hsd, hsd_ly: s.hsd_ly },
+    rows: (s.rows || []).map(r => ({
+      month: r.month, ms: r.ms, ms_ly: r.ms_ly, hsd: r.hsd, hsd_ly: r.hsd_ly
+    }))
+  }));
 
+  // indices for easy lookups
+  const indexByArea = {};
+  const indexByCompany = {};
+  const indexByOutlet = {};
+
+  for (const o of outlets) {
+    // by outlet
+    indexByOutlet[o.id] = o;
+
+    // by area
+    const areaKey = (o.area || 'UNKNOWN').toString();
+    (indexByArea[areaKey] ||= { outlets: [] }).outlets.push(o);
+
+    // by company
+    const compKey = (o.company || 'PVT').toString().toUpperCase();
+    (indexByCompany[compKey] ||= { outlets: [] }).outlets.push(o);
+  }
+
+  // helpers reused from your app (monthly + cumulative market share across ALL stations)
+  const msMonthly  = marketShareRowsAllMonthly_MS(stations);
+  const hsdMonthly = marketShareRowsAllMonthly_HSD(stations);
+  const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth);
+  const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth);
+
+  // growth (ro-wise) you already had
   const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
   const monthlyHSD = buildMonthlyGrowthRowsHSD(stations);
   const cumMS      = buildCumulativeGrowthRowsMS(stations, startMonth, latestMonth);
   const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
 
   return {
-    context: { latestMonth, startMonth },
+    context: { latestMonth, startMonth, months },
+    // easy global views
     marketShare: { msMonthly, hsdMonthly, msCum, hsdCum },
     growth: {
-      msTopPos: monthlyMS.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
-      msTopNeg: monthlyMS.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
-      hsdTopPos: monthlyHSD.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
-      hsdTopNeg: monthlyHSD.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
-      msCumTopPos: cumMS.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
-      msCumTopNeg: cumMS.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
-      hsdCumTopPos: cumHSD.filter(r=>r.growth>0).sort((a,b)=>b.growth-a.growth).slice(0,10),
-      hsdCumTopNeg: cumHSD.filter(r=>r.growth<0).sort((a,b)=>a.growth-b.growth).slice(0,10),
+      monthlyMS, monthlyHSD, cumMS, cumHSD
+    },
+    // powerful indexes for arbitrary Q&A
+    indexes: {
+      byArea: indexByArea,
+      byCompany: indexByCompany,
+      byOutlet: indexByOutlet
     }
   };
 }
-
 
 /* ---------- main app ---------- */
 export default function FuelMapApp() {
@@ -637,14 +864,12 @@ function openAI() {
     scrollTop: rightPaneRef.current?.scrollTop ?? 0,
   };
   setAiMode(true);
-  setAiReply("");
   setAiInput("");
 }
 
 function closeAI() {
   const prev = prevViewRef.current;
   setAiMode(false);
-  setAiReply("");
   setAiInput("");
 
   if (prev) {
@@ -672,27 +897,71 @@ async function handleAISubmit(e) {
   const q = aiInput.trim();
   if (!q) return;
 
-  // add user message
-  setChatHistory(prev => [...prev, { role: "user", content: q }]);
+  const reqId = crypto.randomUUID();
+
+  // show user bubble
+  upsertMsg(setChatHistory, { id: reqId + "-user", role: "user", content: q });
+
   setAiInput("");
   setAiBusy(true);
 
   try {
-    const payload = buildInsightsPayload({ latestMonth, stations });
-    payload.question = q;
-
-    const res = await fetch("/api/insights", {
+    const res = await fetch("http://127.0.0.1:3001/api/sql", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      // if you add summarize:true on backend, include it here
+      body: JSON.stringify({ question: q, print_sql: true })
     });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const { text } = await res.json();
 
-    // add assistant reply
-    setChatHistory(prev => [...prev, { role: "assistant", content: text || "(no answer)" }]);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status} ${res.statusText} ${errText}`);
+    }
+
+    const data = await res.json();
+
+    // one assistant message with table (no duplicates)
+    const assistantMsg = {
+      id: reqId + "-answer",
+      role: "assistant",
+      content: {
+        type: "sql_result",
+        sql: data.sql,
+        columns: Array.isArray(data.columns) ? data.columns : [],
+        rows: Array.isArray(data.rows) ? data.rows : [],
+        summary: "" // will be filled below via /api/insights
+      }
+    };
+    upsertMsg(setChatHistory, assistantMsg);
+
+    // optional: 1–2 sentence summary via /api/insights
+    try {
+      const ins = await fetch("http://127.0.0.1:3001/api/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          table: { sql: data.sql, columns: data.columns, rows: data.rows },
+          context: { question: q }
+        })
+      });
+      const jj = await ins.json();
+      const summary = jj?.text || "";
+
+      // update same bubble
+      upsertMsg(setChatHistory, {
+        ...assistantMsg,
+        content: { ...assistantMsg.content, summary }
+      });
+    } catch {
+      // ignore insights errors
+    }
+
   } catch (err) {
-    setChatHistory(prev => [...prev, { role: "assistant", content: `Failed: ${err.message}` }]);
+    upsertMsg(setChatHistory, {
+      id: reqId + "-error",
+      role: "assistant",
+      content: `Failed: ${err.message || String(err)}`
+    });
   } finally {
     setAiBusy(false);
   }
@@ -721,8 +990,6 @@ async function generateInsights() {
     setLoadingInsights(false);
   }
 }
-
-
 
 // small helper to create suggestion objects
 function makeSuggestion(label, type, lat = null, lng = null, station = null) {
@@ -876,7 +1143,10 @@ function selectSuggestion(sug) {
           header: true, skipEmptyLines: true, complete: parsed => {
             const rows = parsed.data.map((r, i) => ({
               month: (r.month || r.MONTH || '').toString().trim(),
-              outlet_id: (r.outlet_id || r.id || `row-${i}`).toString().trim(),
+              outlet_id: ((r.outlet_id || r.id || `row-${i}`) + '')
+  .replace(/,/g, '')  // remove commas
+  .trim(),
+
               name: (r.name || r.NAME || '').toString().trim(),
               trading_area: (r.trading_area || r.tradingArea || r.area || '').toString().trim(),
               company: (r.company || r.brand || '').toString().trim(),
@@ -941,6 +1211,280 @@ function selectSuggestion(sug) {
     const total_ms_ly = Object.values(totals).reduce((s, c) => s + c.ms_ly, 0);
     return Object.entries(totals).map(([company, vals]) => ({ company, ms: vals.ms, ms_ly: vals.ms_ly, share: total_ms ? (vals.ms / total_ms * 100) : 0, share_ly: total_ms_ly ? (vals.ms_ly / total_ms_ly * 100) : 0, share_change: (total_ms && total_ms_ly) ? ((vals.ms / total_ms * 100) - (vals.ms_ly / total_ms_ly * 100)) : 0 })).sort((a, b) => b.share - a.share);
   }
+
+ function Badge({ children, tone = "neutral" }) {
+  const tones = {
+    neutral: { bg: "rgba(241,245,249,0.9)", fg: "#0F172A" },
+    up:      { bg: "rgba(220,252,231,0.9)", fg: "#065F46" },
+    down:    { bg: "rgba(254,226,226,0.9)", fg: "#7F1D1D" },
+  };
+  const t = tones[tone] || tones.neutral;
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center",
+      padding: "2px 8px", borderRadius: 999,
+      fontWeight: 700, fontSize: 12, background: t.bg, color: t.fg
+    }}>{children}</span>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <div style={{
+      fontSize: 12, letterSpacing: .3, color: '#64748B',
+      textTransform: 'uppercase', margin: '10px 0 6px'
+    }}>{children}</div>
+  );
+}
+
+function RowLine({ left, right }) {
+  return (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '180px 1fr',
+      gap: 8, padding: '8px 10px', borderRadius: 10,
+      background: 'rgba(248,250,252,0.9)'
+    }}>
+      <div style={{ fontWeight: 700 }}>{left}</div>
+      <div>{right}</div>
+    </div>
+  );
+}
+
+// --- Parser & pretty renderer ---
+function AIReplyPro({ text }) {
+  // 1) normalize (kill <think>, bullets, fix missing newlines before "1.", "2.", ...)
+  let t = (text || "")
+    .replace(/<think>[\s\S]*?<\/think>/g, "")
+    .replace(/\*\*/g, "")
+    .replace(/ +\| +/g, " | ")
+    .replace(/(\d+)\.\s/g, "\n$1. ")         // ensure newline before any "n. "
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // A) Ranked negatives: "Negative growth in MS (YYYY-MM)"
+  if (/^Negative growth in MS\s*\(/i.test(t)) {
+    const lines = t.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const title = lines.shift();
+    const items = lines.map(ln => {
+      const m = ln.match(
+        /^\d+\.\s*(.+?)\s+—\s+(.+?)\s+—\s+(.+?)\s+\|\s*MS\s+(-?\d+)\s+vs\s+LY\s+(-?\d+)\s+\(Δ\s+(-?\d+)\)/i
+      );
+      if (!m) return null;
+      return { name: m[1], company: m[2], area: m[3], ms: +m[4], ly: +m[5], delta: +m[6] };
+    }).filter(Boolean);
+
+    return (
+      <div style={{ fontSize: 14, lineHeight: 1.6, color: "#0F172A" }}>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>{title}</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {items.map((it, i) => (
+            <div key={i} style={{
+              display: 'grid',
+              gridTemplateColumns: '28px 1fr auto',
+              gap: 10, alignItems: 'center',
+              padding: '10px 12px', borderRadius: 12,
+              background: '#FFF', boxShadow: '0 1px 2px rgba(2,6,23,0.06)'
+            }}>
+              <div style={{
+                width: 24, height: 24, borderRadius: 6, display:'flex',
+                alignItems:'center', justifyContent:'center',
+                background: 'rgba(241,245,249,1)', fontWeight: 800
+              }}>{i+1}</div>
+              <div>
+                <div style={{ fontWeight: 800 }}>{it.name}</div>
+                <div style={{ color:'#64748B', fontSize: 12 }}>{it.company} • {it.area}</div>
+              </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <Badge tone="down">Δ {it.delta}</Badge>
+                <span style={{ fontSize: 12, color:'#475569' }}>
+                  MS {it.ms.toLocaleString()} • LY {it.ly.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // B) Two-section market share ("This month" + "Cumulative")
+  if (/^This month/i.test(t) && /\n\s*Cumulative/i.test(t)) {
+    const [mPart, cPart] = t.split(/\n\s*Cumulative\s*\n/i);
+    const monthLines = mPart.replace(/^This month\s*\n?/i, "").split("\n").map(s=>s.trim()).filter(Boolean);
+    const cumLines   = cPart.split("\n").map(s=>s.trim()).filter(Boolean);
+    const parseLine = ln => {
+      const m = ln.match(/^(.+?)\s+(\d+(?:\.\d+)?)%\s*(?:\((?:YoY|yoy)\s*([+\-]?\d+(?:\.\d+)?)\))?/i);
+      if (!m) return null;
+      return { brand: m[1].trim(), pct: +m[2], yoy: m[3] ? +m[3] : null };
+    };
+
+    const Section = ({ title, items }) => (
+      <>
+        <SectionTitle>{title}</SectionTitle>
+        <div style={{ display:'grid', gap:6 }}>
+          {items.map((x, i) => (
+            <RowLine
+              key={i}
+              left={x.brand}
+              right={
+                <>
+                  <span style={{ fontWeight: 800 }}>{x.pct.toFixed(2)}%</span>{" "}
+                  {x.yoy != null && (
+                    <Badge tone={x.yoy >= 0 ? "up" : "down"}>
+                      YoY {x.yoy >= 0 ? "+" : ""}{x.yoy.toFixed(2)}
+                    </Badge>
+                  )}
+                </>
+              }
+            />
+          ))}
+        </div>
+      </>
+    );
+
+    return (
+      <div style={{ fontSize: 14, lineHeight: 1.6, color: "#0F172A" }}>
+        <Section title="This month" items={monthLines.map(parseLine).filter(Boolean)} />
+        <div style={{ height: 8 }} />
+        <Section title="Cumulative" items={cumLines.map(parseLine).filter(Boolean)} />
+      </div>
+    );
+  }
+
+  // Fallback
+  return <div style={{ whiteSpace:'pre-wrap', fontSize:14, lineHeight:1.6 }}>{t}</div>;
+}
+
+// --- Helper: turn the assistant's raw text into a structured shape we can render nicely
+function parseAssistant(text = "") {
+  const t0 = (text || "")
+    .replace(/<think>[\s\S]*?<\/think>/g, "") // strip any leaked think blocks
+    .replace(/\*\*/g, "")                     // remove markdown bold markers
+    .replace(/^\s*[-*•]+\s*/gm, "")           // strip bullet chars at line starts
+    .replace(/(\d+)\.\s/g, "\n$1. ")          // ensure newline before "1. ", "2. ", ...
+    .replace(/\r/g, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // A) Ranked negatives block
+  if (/^Negative growth in MS\s*\(/i.test(t0)) {
+    const lines = t0.split(/\n+/).map(s => s.trim()).filter(Boolean);
+    const title = lines.shift() || "Negative growth in MS";
+    const items = lines.map(ln => {
+      const m = ln.match(
+        /^\d+\.\s*(.+?)\s+—\s+(.+?)\s+—\s+(.+?)\s+\|\s*MS\s+(-?\d+)\s+vs\s+LY\s+(-?\d+)\s+\(Δ\s+(-?\d+)\)/i
+      );
+      if (!m) return null;
+      return { name: m[1], company: m[2], area: m[3], ms: +m[4], ly: +m[5], delta: +m[6] };
+    }).filter(Boolean);
+
+    return { type: "negatives", title, items };
+  }
+
+  // B) Two-section market share block
+  if (/^This month/i.test(t0) && /\n\s*Cumulative/i.test(t0)) {
+    const [mPart, cPart] = t0.split(/\n\s*Cumulative\s*\n/i);
+    const monthLines = (mPart || "").replace(/^This month\s*\n?/i, "")
+      .split("\n").map(s => s.trim()).filter(Boolean);
+    const cumLines   = (cPart || "")
+      .split("\n").map(s => s.trim()).filter(Boolean);
+
+    const parseLine = (ln) => {
+      // "IOC 43.99% (YoY -1.80)"
+      const m = ln.match(/^(.+?)\s+(\d+(?:\.\d+)?)%\s*(?:\((?:YoY|yoy)\s*([+\-]?\d+(?:\.\d+)?)\))?/i);
+      if (!m) return null;
+      return { brand: m[1].trim(), pct: +m[2], yoy: m[3] ? +m[3] : null };
+    };
+
+    return {
+      type: "marketshare",
+      month: monthLines.map(parseLine).filter(Boolean),
+      cum:   cumLines.map(parseLine).filter(Boolean),
+    };
+  }
+
+  // Fallback
+  return { type: "plain", text: t0 };
+}
+
+
+/** ChatGPT-like pretty reply */
+function AIReplyPro({ text }) {
+  const data = parseAssistant(text);
+
+  if (data.type === "negatives") {
+    return (
+      <div style={{ fontSize: 14, lineHeight: 1.6, color: "#0F172A" }}>
+        <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 8 }}>{data.title}</div>
+        <div style={{ display: 'grid', gap: 6 }}>
+          {data.items.map((it, i) => (
+            <div key={i} style={{
+              display: 'grid',
+              gridTemplateColumns: '28px 1fr auto',
+              gap: 10, alignItems: 'center',
+              padding: '10px 12px', borderRadius: 12,
+              background: '#FFF', boxShadow: '0 1px 2px rgba(2,6,23,0.06)'
+            }}>
+              <div style={{
+                width: 24, height: 24, borderRadius: 6, display:'flex',
+                alignItems:'center', justifyContent:'center',
+                background: 'rgba(241,245,249,1)', fontWeight: 800
+              }}>{i+1}</div>
+              <div>
+                <div style={{ fontWeight: 800 }}>{it.name}</div>
+                <div style={{ color:'#64748B', fontSize: 12 }}>{it.company} • {it.area}</div>
+              </div>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                <Badge tone="down">Δ {it.delta}</Badge>
+                <span style={{ fontSize: 12, color:'#475569' }}>
+                  MS {it.ms.toLocaleString()} • LY {it.ly.toLocaleString()}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (data.type === "marketshare") {
+    const Section = ({ title, items }) => (
+      <>
+        <SectionTitle>{title}</SectionTitle>
+        <div style={{ display:'grid', gap:6 }}>
+          {items.map((x, i) => (
+            <RowLine
+              key={i}
+              left={x.brand}
+              right={
+                <>
+                  <span style={{ fontWeight: 800 }}>{x.pct.toFixed(2)}%</span>{" "}
+                  {x.yoy != null && (
+                    <Badge tone={x.yoy >= 0 ? "up" : "down"}>
+                      YoY {x.yoy >= 0 ? "+" : ""}{x.yoy.toFixed(2)}
+                    </Badge>
+                  )}
+                </>
+              }
+            />
+          ))}
+        </div>
+      </>
+    );
+
+    return (
+      <div style={{ fontSize: 14, lineHeight: 1.6, color: "#0F172A" }}>
+        <Section title="This month" items={data.month} />
+        <div style={{ height: 8 }} />
+        <Section title="Cumulative" items={data.cum} />
+      </div>
+    );
+  }
+
+  // Fallback plain
+  return <div style={{ whiteSpace:'pre-wrap', fontSize:14, lineHeight:1.6 }}>{data.text}</div>;
+}
 
   function handleCsv(file) {
     Papa.parse(file, {
@@ -1224,34 +1768,49 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
     pointerEvents:'none'
   }}>
     <div style={{ color:'#64748B', textAlign:'center', maxWidth:520 }}>
-      Ask about monthly vs cumulative performance, biggest movers,
+      Ask about biggest movers,
       market-share shifts, or mop-up guidance.
     </div>
   </div>
 )}
 
 
-      {/* Reply bubble */}
-      <div style={{ overflowY: "auto", paddingBottom: 60, height: "calc(100% - 60px)" }}>
-  {chatHistory.map((msg, i) => (
+  {/* Reply bubble list */}
+<div style={{ overflowY: "auto", paddingBottom: 60, height: "calc(100% - 60px)" }}>
+{chatHistory.map((msg) => {
+  const isUser = msg.role === "user";
+  const isSqlResult = !isUser && msg.content && typeof msg.content === "object" && msg.content.type === "sql_result";
+  return (
     <div
-      key={i}
+      key={msg.id || JSON.stringify(msg)}   // <- stable key (prefers msg.id)
       style={{
         maxWidth: "80%",
-        margin: msg.role === "user" ? "8px 0 8px auto" : "8px auto 8px 0",
+        margin: isUser ? "8px 0 8px auto" : "8px auto 8px 0",
         padding: "10px 14px",
         borderRadius: 12,
-        background: msg.role === "user" ? "#E0F2FE" : "#F1F5F9",
-        alignSelf: msg.role === "user" ? "flex-end" : "flex-start",
-        whiteSpace: "pre-wrap",
-        fontSize: 14,
-        lineHeight: 1.5,
+        background: isUser ? "#E0F2FE" : "#FFFFFF",
+        boxShadow: isUser ? "none" : "0 1px 2px rgba(2,6,23,0.06)"
       }}
     >
-      {msg.content}
+      {isUser
+        ? msg.content
+        : (isSqlResult
+            ? <SQLResult
+                sql={msg.content.sql}
+                columns={msg.content.columns}
+                rows={msg.content.rows}
+                summary={msg.content.summary}     // <- new
+              />
+            : <AIReplyPro text={msg.content} />
+          )
+      }
     </div>
-  ))}
+  );
+})}
+
+
 </div>
+
 
       {/* Bottom-centered input */}
       <form className="ai-inputbar" onSubmit={handleAISubmit}>

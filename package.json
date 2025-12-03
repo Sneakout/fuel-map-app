@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "duckdb": "^1.4.1",
     "express": "^5.1.0",
     "framer-motion": "^12.23.13",
     "leaflet": "^1.9.4",
