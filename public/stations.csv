@@ -1,4 +1,5 @@
-﻿month,outlet_id,name,trading_area,company,lat,lng,ms,hsd,ms_ly,hsd_ly
+﻿# data update
+month,outlet_id,name,trading_area,company,lat,lng,ms,hsd,ms_ly,hsd_ly
 2025-11,146267,MALIYAKKAL FILLING STATION,VENGARA,BPC,11.0512894,75.9845704,167,265,160,300
 2025-11,215812,MOOKKAMPARAMBATH AUTO FUELS (2020-21),VALLIKUNNU,BPC,11.12183,75.84632,112,68,100,68
 2025-11,116140,KEYTEES PETROLEUM,Valanchery,BPC,10.8867754,76.0728141,96,108,68,88
