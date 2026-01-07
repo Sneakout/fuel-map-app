@@ -1,3 +1,10 @@
+# Git internal / temp
+FETCH_HEAD
+
+# Data files
+*.xlsx
+
+
 <<<<<<< HEAD ======= * !stations.csv !.gitignore >>>>>>> 30ea62a (Add stations.csv data for MYRSA) # Logs logs *.log npm-debug.log* yarn-debug.log* yarn-error.log* pnpm-debug.log* lerna-# Logs
 logs
 *.log
