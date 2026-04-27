@@ -721,7 +721,7 @@ function MarketShareTable({ rows, label }) {
   );
 }
 
-function TradingAreaLossTable({ rows, label }) {
+function TradingAreaLossTable({ rows, label, onAreaSelect }) {
   return (
     <div style={{ marginTop: 10 }}>
       <h4 style={{ margin: '0 0 6px 0' }}>{label}</h4>
@@ -744,7 +744,25 @@ function TradingAreaLossTable({ rows, label }) {
               <tr><td colSpan={8} style={{ padding: 16, color: '#64748B' }}>No IOC losing trading areas found.</td></tr>
             ) : rows.map((r, i) => (
               <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
-                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{r.area}</td>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>
+                  <button
+                    type="button"
+                    onClick={() => onAreaSelect && onAreaSelect(r)}
+                    style={{
+                      border: 'none',
+                      background: 'transparent',
+                      padding: 0,
+                      margin: 0,
+                      color: '#1D4ED8',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                      textAlign: 'left',
+                      textDecoration: 'underline'
+                    }}
+                  >
+                    {r.area}
+                  </button>
+                </td>
                 <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.curr)}</td>
                 <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.last)}</td>
                 <td style={{
@@ -952,6 +970,7 @@ export default function FuelMapApp() {
   const [stations, setStations] = useState([]);
   const [iconsMap, setIconsMap] = useState({});
   const [selected, setSelected] = useState(null);
+  const [taSelected, setTaSelected] = useState(null);
   const [animState, setAnimState] = useState({ mode: 'idle', key: 0 });
 // pick latest month from CSV records, falling back to calendar if empty
 const [latestMonth, setLatestMonth] = useState(() => {
@@ -1178,6 +1197,7 @@ function selectSuggestion(sug) {
 
   // if we have a station object (exact outlet), pre-select it
   if (sug.station) {
+    setTaSelected(null);
     setSelected(prev => ({
       ...sug.station,
       trading_area_norm: sug.station.trading_area_norm || (sug.station.trading_area || '').toLowerCase()
@@ -1186,6 +1206,7 @@ function selectSuggestion(sug) {
     // if only area, pick first station in that area and select
     const pick = stations.find(st => (st.trading_area || '').toLowerCase() === (sug.label.split(' · ')[0] || '').toLowerCase());
     if (pick) {
+      setTaSelected(null);
       setSelected(prev => ({ ...pick, trading_area_norm: pick.trading_area_norm || (pick.trading_area || '').toLowerCase() }));
     }
   }
@@ -1322,6 +1343,21 @@ function selectSuggestion(sug) {
   function outletsInAreaNorm(normArea) {
     if (!normArea) return [];
     return stations.filter(s => (s.trading_area_norm || '') === normArea);
+  }
+
+  function openTradingAreaAnalysis(row, returnPage = pageIndex) {
+    const areaName = (row?.area || "").toString().trim();
+    const areaNorm = areaName.toLowerCase();
+    if (!areaNorm) return;
+    setSelected(null);
+    setTaSelected({ trading_area: areaName, trading_area_norm: areaNorm, returnPage });
+    setPageIndex(returnPage === 9 ? 1 : 0);
+  }
+
+  function closeTradingAreaAnalysis() {
+    const returnPage = taSelected?.returnPage;
+    setTaSelected(null);
+    setPageIndex(typeof returnPage === "number" ? returnPage : 8);
   }
 
   function computeMarketShare(areaNorm) {
@@ -1785,7 +1821,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 >
     <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
     {/* Deselect when clicking anywhere on map that is not a Marker */}
-    <DeselectOnMapClick onDeselect={() => setSelected(null)} />
+    <DeselectOnMapClick onDeselect={() => { setSelected(null); setTaSelected(null); }} />
     {stations.map(st => {
       if (!st.lat || !st.lng || isNaN(st.lat) || isNaN(st.lng)) return null;
       const cmp = (st.company || '').toString().replace(/\s+/g, '').toUpperCase();
@@ -1824,11 +1860,14 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
           icon={icon}
           eventHandlers={{
             click: () =>
-              setSelected({
-                ...st,
-                trading_area_norm:
-                  st.trading_area_norm || (st.trading_area || '').toLowerCase(),
-              }),
+              {
+                setTaSelected(null);
+                setSelected({
+                  ...st,
+                  trading_area_norm:
+                    st.trading_area_norm || (st.trading_area || '').toLowerCase(),
+                });
+              },
           }}
         >
           <Tooltip direction="top" offset={[0, -10]} opacity={1} className="my-tooltip">
@@ -1972,7 +2011,186 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
       </div>
 
       {/* Right pane content */}
-      {!selected ? (
+      {taSelected ? (
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div
+            key={`ta-${taSelected.trading_area_norm}`}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -12 }}
+            transition={{ duration: 0.3 }}
+          >
+            {(() => {
+              const areaNorm = taSelected.trading_area_norm || "";
+              const areaOutletsBase = outletsInAreaNorm(areaNorm);
+              const startMonth = fiscalYearStartMonth(latestMonth);
+              const areaOutlets = pageIndex === 1
+                ? areaOutletsBase.map((o) => {
+                    const sums = cumulativeForOutletRows(o.rows || [], startMonth, latestMonth);
+                    return { ...o, ms: sums.ms, ms_ly: sums.ms_ly, hsd: sums.hsd, hsd_ly: sums.hsd_ly };
+                  })
+                : areaOutletsBase;
+              const areaTotals = areaOutlets.reduce((acc, o) => {
+                acc.ms += Number(o.ms || 0);
+                acc.ms_ly += Number(o.ms_ly || 0);
+                acc.hsd += Number(o.hsd || 0);
+                acc.hsd_ly += Number(o.hsd_ly || 0);
+                return acc;
+              }, { ms: 0, ms_ly: 0, hsd: 0, hsd_ly: 0 });
+              const marketRows = pageIndex === 1
+                ? computeCumulativeMarketShareForArea(areaOutletsBase, startMonth, latestMonth)
+                : computeMarketShare(areaNorm);
+
+              return (
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <button
+                          type="button"
+                          onClick={closeTradingAreaAnalysis}
+                          style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F8FAFC', cursor:'pointer', fontWeight: 700 }}
+                        >
+                          Back
+                        </button>
+                        <h2 style={{ margin: 0 }}>{taSelected.trading_area}</h2>
+                      </div>
+                      <div style={{ color: '#64748B', marginTop: 6 }}>Trading area analysis</div>
+                    </div>
+
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <button
+                        onClick={() => setPageIndex(0)}
+                        aria-label="Monthly view"
+                        title="Monthly view"
+                        className="nav-btn"
+                        style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 0 ? 1 : 0.7 }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                          <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+
+                      <button
+                        onClick={() => setPageIndex(1)}
+                        aria-label="Cumulative view"
+                        title="Cumulative (Apr → latest)"
+                        className="nav-btn"
+                        style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 1 ? 1 : 0.7 }}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                          <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Mode</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS Change</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD LY</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD Change</div>
+                    </div>
+
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={pageIndex === 1 ? "ta-cumulative" : "ta-monthly"}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.3 }}
+                        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
+                      >
+                        <div style={{ fontWeight: 600 }}>{pageIndex === 1 ? 'Cumulative' : formatMonth(latestMonth)}</div>
+                        <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaTotals.ms)}</div>
+                        <div>{formatRoundedNumber(areaTotals.ms_ly)}</div>
+                        <div><VolumeChange curr={areaTotals.ms} prev={areaTotals.ms_ly} /></div>
+                        <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaTotals.hsd)}</div>
+                        <div>{formatRoundedNumber(areaTotals.hsd_ly)}</div>
+                        <div><VolumeChange curr={areaTotals.hsd} prev={areaTotals.hsd_ly} /></div>
+                      </motion.div>
+                    </AnimatePresence>
+                  </div>
+
+                  <div style={{ marginTop: 20 }}>
+                    <h3 style={{ margin: '0 0 8px 0', display: "flex", alignItems: "center", gap: 6 }}>
+                      Trading Area - Outlets
+                      <span style={{ fontWeight: 400, fontSize: "0.9em", color: "#64748B" }}>
+                        {pageIndex === 1 ? `(Cumulative Apr → ${formatMonth(latestMonth)})` : '(Month)'}
+                      </span>
+                    </h3>
+
+                    <div style={{ background: '#fff', borderRadius: 8, padding: 8, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+                      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                        <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+                          <tr>
+                            <th style={{ padding: '8px 6px' }}>Outlet</th>
+                            <th style={{ padding: '8px 6px' }}>Company</th>
+                            <th style={{ padding: '8px 6px' }}>MS</th>
+                            <th style={{ padding: '8px 6px' }}>MS LY</th>
+                            <th style={{ padding: '8px 6px' }}>Volume Change</th>
+                            <th style={{ padding: '8px 6px' }}>HSD</th>
+                            <th style={{ padding: '8px 6px' }}>HSD LY</th>
+                            <th style={{ padding: '8px 6px' }}>Volume Change</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(!areaOutlets || areaOutlets.length === 0) ? (
+                            <tr><td colSpan={8} style={{ padding: 16, color: '#64748B' }}>No outlets found in this trading area.</td></tr>
+                          ) : areaOutlets.map((o, i) => (
+                            <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                              <td style={{ padding: '8px 6px' }}>{o.name}</td>
+                              <td style={{ padding: '8px 6px' }}>{o.company}</td>
+                              <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.ms)}</td>
+                              <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.ms_ly)}</td>
+                              <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.ms} prev={o.ms_ly} /></td>
+                              <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.hsd)}</td>
+                              <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.hsd_ly)}</td>
+                              <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.hsd} prev={o.hsd_ly} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: 20 }}>
+                    <h3 style={{ margin: '0 0 8px 0' }}>Trading Area - Market Share</h3>
+                    <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+                      <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+                        <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+                          <tr>
+                            <th style={{ padding: '8px 6px' }}>Company</th>
+                            <th style={{ padding: '8px 6px' }}>Market Share</th>
+                            <th style={{ padding: '8px 6px' }}>Market Share (LY)</th>
+                            <th style={{ padding: '8px 6px' }}>Change</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(!marketRows || marketRows.length === 0) ? (
+                            <tr><td colSpan={4} style={{ padding: 16, color: '#64748B' }}>No market-share data available for this trading area.</td></tr>
+                          ) : marketRows.map((m, i) => (
+                            <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                              <td style={{ padding: '8px 6px' }}>{m.company}</td>
+                              <td style={{ padding: '8px 6px' }}>{(m.share || 0).toFixed(2)}%</td>
+                              <td style={{ padding: '8px 6px' }}>{(m.share_ly || 0).toFixed(2)}%</td>
+                              <td style={{ padding: '8px 6px' }}><ShareChange value={m.share_change || 0} /></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </motion.div>
+        </AnimatePresence>
+      ) : !selected ? (
         <div>
           {/* Buttons visible when NO RO is selected */}
           <div style={{ display: 'flex', gap: 6 }}>
@@ -2065,8 +2283,8 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               return (
                 <div style={{ marginTop: 14 }}>
                   <h3 style={{ margin: '0 0 8px 0' }}>Highest losing trading area | IOC | Selected Month</h3>
-                  <TradingAreaLossTable rows={losingMonthMS} label="MS | Top 10 IOC losing trading areas" />
-                  <TradingAreaLossTable rows={losingMonthHSD} label="HSD | Top 10 IOC losing trading areas" />
+                  <TradingAreaLossTable rows={losingMonthMS} label="MS | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
+                  <TradingAreaLossTable rows={losingMonthHSD} label="HSD | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
                 </div>
               );
             }
@@ -2078,8 +2296,8 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   <h3 style={{ margin: '0 0 8px 0' }}>
                     Highest losing trading area | IOC | Cumulative Apr → {formatMonth(latestMonth)}
                   </h3>
-                  <TradingAreaLossTable rows={losingCumMS} label="MS | Top 10 IOC losing trading areas" />
-                  <TradingAreaLossTable rows={losingCumHSD} label="HSD | Top 10 IOC losing trading areas" />
+                  <TradingAreaLossTable rows={losingCumMS} label="MS | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
+                  <TradingAreaLossTable rows={losingCumHSD} label="HSD | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
                 </div>
               );
             }
