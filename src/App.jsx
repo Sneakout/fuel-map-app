@@ -300,6 +300,19 @@ function monthInRange(monthStr, startStr, endStr) {
   return t >= monthToken(startStr) && t <= monthToken(endStr);
 }
 
+function fiscalYearStartMonth(monthStr) {
+  const [yearRaw, monthRaw] = (monthStr || "").split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  if (!year || !month) {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+    return `${currentMonth >= 4 ? currentYear : currentYear - 1}-04`;
+  }
+  return `${month >= 4 ? year : year - 1}-04`;
+}
+
 // compute cumulative sums for an outlet rows array between startMonth and endMonth (both YYYY-MM inclusive)
 function cumulativeForOutletRows(rows, startMonth, endMonth) {
   const sum = { ms: 0, hsd: 0, ms_ly: 0, hsd_ly: 0 };
@@ -757,8 +770,7 @@ function buildInsightsPayload({ latestMonth, stations }) {
     )
   ).sort((a,b)=> a > b ? -1 : a < b ? 1 : 0);
 
-  const year = (latestMonth || "").split("-")[0];
-  const startMonth = `${year}-04`;
+  const startMonth = fiscalYearStartMonth(latestMonth);
 
   // compact outlet object to keep payload small but complete
   const outlets = stations.map(s => ({
@@ -843,8 +855,7 @@ const [latestMonth, setLatestMonth] = useState(() => {
   // safe memoized cumulative sums for currently selected RO
 const cumulativeSums = useMemo(() => {
   if (!selected) return null;
-  const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
-  const startMonth = `${year}-04`;
+  const startMonth = fiscalYearStartMonth(latestMonth);
   return cumulativeForOutletRows(selected.rows || [], startMonth, latestMonth);
 }, [selected, latestMonth]);
 
@@ -1886,8 +1897,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
           {/* Growth/MarketShare pages when no RO is selected */}
           {pageIndex >= 2 && (() => {
-            const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
-            const startMonth = `${year}-04`;
+            const startMonth = fiscalYearStartMonth(latestMonth);
 
             // Build data for Growth pages
             const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
@@ -2114,8 +2124,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
       let outlets = outletsInAreaNorm(areaNorm);
 
       if (pageIndex === 1) {
-        const year = (latestMonth || "").split("-")[0] || new Date().getFullYear();
-        const startMonth = `${year}-04`;
+        const startMonth = fiscalYearStartMonth(latestMonth);
         outlets = outlets.map(o => {
           const sums = cumulativeForOutletRows(o.rows || [], startMonth, latestMonth);
           return { ...o, ms: sums.ms, ms_ly: sums.ms_ly, hsd: sums.hsd, hsd_ly: sums.hsd_ly };
