@@ -253,6 +253,8 @@ function formatFiscalRangeLabel(startMonth, endMonth) {
   return `${start} - ${end}`;
 }
 
+const TA_METRIC_ORDER = ["combined", "ms", "hsd"];
+
 function PercentBadge({ value }) {
   const positive = value >= 0;
   return (
@@ -983,9 +985,10 @@ function buildTradingAreaCompanyMergedRows(companyRows) {
   ];
 }
 
-function TradingAreaPerformanceTable({ rows, label, firstColumnLabel, includeCompany = false, metric = "ms" }) {
+function TradingAreaPerformanceTable({ rows, label, firstColumnLabel, includeCompany = false, metric = "combined" }) {
   const cellStyle = { padding: '8px 8px', whiteSpace: 'nowrap', verticalAlign: 'middle' };
   const nameCellStyle = { ...cellStyle, whiteSpace: 'normal' };
+  const isCombined = metric === "combined";
   const isMS = metric === "ms";
   const metricLabel = isMS ? "MS" : "HSD";
   return (
@@ -997,27 +1000,65 @@ function TradingAreaPerformanceTable({ rows, label, firstColumnLabel, includeCom
             <tr>
               <th style={nameCellStyle}>{firstColumnLabel}</th>
               {includeCompany ? <th style={cellStyle}>Company</th> : null}
-              <th style={cellStyle}>{metricLabel}</th>
-              <th style={cellStyle}>{metricLabel} LY</th>
-              <th style={cellStyle}>{metricLabel} Change</th>
-              <th style={cellStyle}>{metricLabel} Share</th>
-              <th style={cellStyle}>{metricLabel} Share (LY)</th>
-              <th style={cellStyle}>{metricLabel} pp change</th>
+              {isCombined ? (
+                <>
+                  <th style={cellStyle}>MS</th>
+                  <th style={cellStyle}>MS LY</th>
+                  <th style={cellStyle}>MS Change</th>
+                  <th style={cellStyle}>MS Share</th>
+                  <th style={cellStyle}>MS Share (LY)</th>
+                  <th style={cellStyle}>MS pp change</th>
+                  <th style={cellStyle}>HSD</th>
+                  <th style={cellStyle}>HSD LY</th>
+                  <th style={cellStyle}>HSD Change</th>
+                  <th style={cellStyle}>HSD Share</th>
+                  <th style={cellStyle}>HSD Share (LY)</th>
+                  <th style={cellStyle}>HSD pp change</th>
+                </>
+              ) : (
+                <>
+                  <th style={cellStyle}>{metricLabel}</th>
+                  <th style={cellStyle}>{metricLabel} LY</th>
+                  <th style={cellStyle}>{metricLabel} Change</th>
+                  <th style={cellStyle}>{metricLabel} Share</th>
+                  <th style={cellStyle}>{metricLabel} Share (LY)</th>
+                  <th style={cellStyle}>{metricLabel} pp change</th>
+                </>
+              )}
             </tr>
           </thead>
           <tbody>
             {(!rows || rows.length === 0) ? (
-              <tr><td colSpan={includeCompany ? 8 : 7} style={{ padding: 16, color: '#64748B' }}>No data.</td></tr>
+              <tr><td colSpan={includeCompany ? (isCombined ? 14 : 8) : (isCombined ? 13 : 7)} style={{ padding: 16, color: '#64748B' }}>No data.</td></tr>
             ) : rows.map((r, i) => (
               <tr key={`${r.name}-${i}`} style={{ borderTop: '1px solid #F1F5F9', fontWeight: r.isTotal ? 700 : 400, background: r.isTotal ? 'rgba(248,250,252,0.8)' : 'transparent' }}>
                 <td style={nameCellStyle}>{r.name}</td>
                 {includeCompany ? <td style={cellStyle}>{r.company}</td> : null}
-                <td style={cellStyle}>{formatRoundedNumber(isMS ? r.ms : r.hsd)}</td>
-                <td style={cellStyle}>{formatRoundedNumber(isMS ? r.ms_ly : r.hsd_ly)}</td>
-                <td style={cellStyle}><VolumeChange curr={isMS ? r.ms : r.hsd} prev={isMS ? r.ms_ly : r.hsd_ly} /></td>
-                <td style={cellStyle}>{Number(isMS ? r.share : r.hsd_share || 0).toFixed(2)}%</td>
-                <td style={cellStyle}>{Number(isMS ? r.share_ly : r.hsd_share_ly || 0).toFixed(2)}%</td>
-                <td style={cellStyle}><ShareChange value={isMS ? r.share_change : r.hsd_share_change || 0} /></td>
+                {isCombined ? (
+                  <>
+                    <td style={cellStyle}>{formatRoundedNumber(r.ms)}</td>
+                    <td style={cellStyle}>{formatRoundedNumber(r.ms_ly)}</td>
+                    <td style={cellStyle}><VolumeChange curr={r.ms} prev={r.ms_ly} /></td>
+                    <td style={cellStyle}>{Number(r.share || 0).toFixed(2)}%</td>
+                    <td style={cellStyle}>{Number(r.share_ly || 0).toFixed(2)}%</td>
+                    <td style={cellStyle}><ShareChange value={r.share_change || 0} /></td>
+                    <td style={cellStyle}>{formatRoundedNumber(r.hsd)}</td>
+                    <td style={cellStyle}>{formatRoundedNumber(r.hsd_ly)}</td>
+                    <td style={cellStyle}><VolumeChange curr={r.hsd} prev={r.hsd_ly} /></td>
+                    <td style={cellStyle}>{Number(r.hsd_share || 0).toFixed(2)}%</td>
+                    <td style={cellStyle}>{Number(r.hsd_share_ly || 0).toFixed(2)}%</td>
+                    <td style={cellStyle}><ShareChange value={r.hsd_share_change || 0} /></td>
+                  </>
+                ) : (
+                  <>
+                    <td style={cellStyle}>{formatRoundedNumber(isMS ? r.ms : r.hsd)}</td>
+                    <td style={cellStyle}>{formatRoundedNumber(isMS ? r.ms_ly : r.hsd_ly)}</td>
+                    <td style={cellStyle}><VolumeChange curr={isMS ? r.ms : r.hsd} prev={isMS ? r.ms_ly : r.hsd_ly} /></td>
+                    <td style={cellStyle}>{Number(isMS ? r.share : r.hsd_share || 0).toFixed(2)}%</td>
+                    <td style={cellStyle}>{Number(isMS ? r.share_ly : r.hsd_share_ly || 0).toFixed(2)}%</td>
+                    <td style={cellStyle}><ShareChange value={isMS ? r.share_change : r.hsd_share_change || 0} /></td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -1209,7 +1250,7 @@ export default function FuelMapApp() {
   const [iconsMap, setIconsMap] = useState({});
   const [selected, setSelected] = useState(null);
   const [taSelected, setTaSelected] = useState(null);
-  const [taMetric, setTaMetric] = useState("ms");
+  const [taMetric, setTaMetric] = useState("combined");
   const [leftPaneWidthPct, setLeftPaneWidthPct] = useState(50);
   const [isResizing, setIsResizing] = useState(false);
   const [animState, setAnimState] = useState({ mode: 'idle', key: 0 });
@@ -1615,7 +1656,7 @@ function selectSuggestion(sug) {
     const areaNorm = areaName.toLowerCase();
     if (!areaNorm) return;
     setSelected(null);
-    setTaMetric("ms");
+    setTaMetric("combined");
     setTaSelected({ trading_area: areaName, trading_area_norm: areaNorm, returnPage });
     setPageIndex(returnPage === 9 ? 1 : 0);
   }
@@ -1623,8 +1664,17 @@ function selectSuggestion(sug) {
   function closeTradingAreaAnalysis() {
     const returnPage = taSelected?.returnPage;
     setTaSelected(null);
-    setTaMetric("ms");
+    setTaMetric("combined");
     setPageIndex(typeof returnPage === "number" ? returnPage : 8);
+  }
+
+  function cycleTaMetric(direction) {
+    setTaMetric((prev) => {
+      const index = TA_METRIC_ORDER.indexOf(prev);
+      const safeIndex = index >= 0 ? index : 0;
+      const nextIndex = (safeIndex + direction + TA_METRIC_ORDER.length) % TA_METRIC_ORDER.length;
+      return TA_METRIC_ORDER[nextIndex];
+    });
   }
 
   function computeMarketShare(areaNorm) {
@@ -2281,6 +2331,52 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
   ) : (
     /* ============ NON-AI: EVERYTHING ELSE ============ */
     <>
+      {/* Header controls near AI */}
+      {taSelected ? (
+        <div style={{ position: 'absolute', top: 8, right: 56, zIndex: 1000, display: 'flex', gap: 6, alignItems: 'center' }}>
+          <button
+            onClick={() => setPageIndex(0)}
+            aria-label="Monthly period"
+            title="Month"
+            className="nav-btn"
+            style={{ padding:'6px 9px', borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 0 ? 1 : 0.7, fontWeight: 700, fontSize: 12, lineHeight: 1 }}
+          >
+            Month
+          </button>
+          <button
+            onClick={() => setPageIndex(1)}
+            aria-label="Cumulative period"
+            title="Cumulative"
+            className="nav-btn"
+            style={{ padding:'6px 9px', borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 1 ? 1 : 0.7, fontWeight: 700, fontSize: 12, lineHeight: 1 }}
+          >
+            Cumulative
+          </button>
+          <button
+            onClick={() => cycleTaMetric(-1)}
+            aria-label="Previous analysis page"
+            title="Previous analysis page"
+            className="nav-btn"
+            style={{ width:32, height:32, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+          <button
+            onClick={() => cycleTaMetric(1)}
+            aria-label="Next analysis page"
+            title="Next analysis page"
+            className="nav-btn"
+            style={{ width:32, height:32, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </button>
+        </div>
+      ) : null}
+
       {/* Top-right AI open button (same spot as ✕) */}
       <button
         aria-label="Open AI"
@@ -2288,7 +2384,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
         onClick={openAI}
       >AI</button>
 
-      {/* Month selector (hidden in AI mode) */}
+      {/* Month selector / top controls (hidden in AI mode) */}
       <div style={{ marginBottom: 8 }}>
         <MonthSelector
           records={records}
@@ -2338,7 +2434,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               const periodLabel = pageIndex === 1
                 ? formatFiscalRangeLabel(startMonth, latestMonth)
                 : formatMonth(latestMonth);
-              const metricLabel = taMetric === "ms" ? "MS" : "HSD";
+              const metricLabel = taMetric === "combined" ? "Combined" : taMetric === "ms" ? "MS" : "HSD";
 
               return (
                 <div>
@@ -2361,59 +2457,31 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                       <div style={{ color: '#64748B', marginTop: 6 }}>Trading area analysis</div>
                     </div>
 
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      <button
-                        onClick={() => setPageIndex(0)}
-                        aria-label="Monthly period"
-                        title="Month"
-                        className="nav-btn"
-                        style={{ padding:'8px 10px', borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 0 ? 1 : 0.7, fontWeight: 700 }}
-                      >
-                        Month
-                      </button>
-                      <button
-                        onClick={() => setPageIndex(1)}
-                        aria-label="Cumulative period"
-                        title="Cumulative"
-                        className="nav-btn"
-                        style={{ padding:'8px 10px', borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: pageIndex === 1 ? 1 : 0.7, fontWeight: 700 }}
-                      >
-                        Cumulative
-                      </button>
-                      <button
-                        onClick={() => setTaMetric("ms")}
-                        aria-label="MS analysis page"
-                        title="MS analysis"
-                        className="nav-btn"
-                        style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: taMetric === "ms" ? 1 : 0.7 }}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                          <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-
-                      <button
-                        onClick={() => setTaMetric("hsd")}
-                        aria-label="HSD analysis page"
-                        title="HSD analysis"
-                        className="nav-btn"
-                        style={{ width:40, height:40, borderRadius:8, border:'none', background:'#F8FAFC', cursor:'pointer', opacity: taMetric === "hsd" ? 1 : 0.7 }}
-                      >
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
-                          <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                    </div>
                   </div>
 
                   <div style={{ marginTop: 16 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 1fr)', gap: 12, alignItems: 'center' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: taMetric === "combined" ? 'repeat(11, 1fr)' : 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Period</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Outlets</div>
-                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>{metricLabel}</div>
-                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>{metricLabel} LY</div>
-                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>{metricLabel} Change</div>
-                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg {metricLabel}</div>
+                      {taMetric === "combined" ? (
+                        <>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS Change</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg MS</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD LY</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD Change</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg HSD</div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>{metricLabel}</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>{metricLabel} LY</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>{metricLabel} Change</div>
+                          <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg {metricLabel}</div>
+                        </>
+                      )}
                     </div>
 
                     <AnimatePresence mode="wait">
@@ -2423,14 +2491,29 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -8 }}
                         transition={{ duration: 0.3 }}
-                        style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 1fr)', gap: 12, alignItems: 'center' }}
+                        style={{ display: 'grid', gridTemplateColumns: taMetric === "combined" ? 'repeat(11, 1fr)' : 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
                       >
                         <div style={{ fontWeight: 600 }}>{periodLabel}</div>
                         <div style={{ fontWeight: 700 }}>{outletCount}</div>
-                        <div style={{ fontWeight: 700 }}>{formatRoundedNumber(taMetric === "ms" ? areaTotals.ms : areaTotals.hsd)}</div>
-                        <div>{formatRoundedNumber(taMetric === "ms" ? areaTotals.ms_ly : areaTotals.hsd_ly)}</div>
-                        <div><VolumeChange curr={taMetric === "ms" ? areaTotals.ms : areaTotals.hsd} prev={taMetric === "ms" ? areaTotals.ms_ly : areaTotals.hsd_ly} /></div>
-                        <div>{formatRoundedNumber(taMetric === "ms" ? areaAverages.ms : areaAverages.hsd)}</div>
+                        {taMetric === "combined" ? (
+                          <>
+                            <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaTotals.ms)}</div>
+                            <div>{formatRoundedNumber(areaTotals.ms_ly)}</div>
+                            <div><VolumeChange curr={areaTotals.ms} prev={areaTotals.ms_ly} /></div>
+                            <div>{formatRoundedNumber(areaAverages.ms)}</div>
+                            <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaTotals.hsd)}</div>
+                            <div>{formatRoundedNumber(areaTotals.hsd_ly)}</div>
+                            <div><VolumeChange curr={areaTotals.hsd} prev={areaTotals.hsd_ly} /></div>
+                            <div>{formatRoundedNumber(areaAverages.hsd)}</div>
+                          </>
+                        ) : (
+                          <>
+                            <div style={{ fontWeight: 700 }}>{formatRoundedNumber(taMetric === "ms" ? areaTotals.ms : areaTotals.hsd)}</div>
+                            <div>{formatRoundedNumber(taMetric === "ms" ? areaTotals.ms_ly : areaTotals.hsd_ly)}</div>
+                            <div><VolumeChange curr={taMetric === "ms" ? areaTotals.ms : areaTotals.hsd} prev={taMetric === "ms" ? areaTotals.ms_ly : areaTotals.hsd_ly} /></div>
+                            <div>{formatRoundedNumber(taMetric === "ms" ? areaAverages.ms : areaAverages.hsd)}</div>
+                          </>
+                        )}
                       </motion.div>
                     </AnimatePresence>
                   </div>
