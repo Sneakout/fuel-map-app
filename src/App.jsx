@@ -757,7 +757,7 @@ function TradingAreaLossTable({ rows, label, onAreaSelect }) {
                       cursor: 'pointer',
                       fontWeight: 700,
                       textAlign: 'left',
-                      textDecoration: 'underline'
+                      textDecoration: 'none'
                     }}
                   >
                     {r.area}
