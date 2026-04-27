@@ -219,6 +219,10 @@ function calcGrowth(curr, prev) {
   return ((c - p) / p) * 100;
 }
 
+function formatRoundedNumber(value) {
+  return Math.round(Number(value || 0)).toLocaleString("en-IN");
+}
+
 function PercentBadge({ value }) {
   const positive = value >= 0;
   return (
@@ -234,7 +238,7 @@ function VolumeChange({ curr, prev }) {
   const positive = diff >= 0;
   const sign = positive ? "+" : "-";
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: 8, background: positive ? '#ECFDF5' : '#FEF2F2', color: positive ? '#064E3B' : '#7F1D1D', fontWeight: 700 }}>{sign}{Math.abs(diff).toLocaleString()}</span>
+    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 8px', borderRadius: 8, background: positive ? '#ECFDF5' : '#FEF2F2', color: positive ? '#064E3B' : '#7F1D1D', fontWeight: 700 }}>{sign}{formatRoundedNumber(Math.abs(diff))}</span>
   );
 }
 
@@ -441,9 +445,9 @@ function GrowthTable({ rows, label }) {
                 <td style={{ padding: '8px 6px' }}>{r.name}</td>
                 <td style={{ padding: '8px 6px' }}>{r.company}</td> {/* NEW */}
                 <td style={{ padding: '8px 6px' }}>{r.area}</td>
-                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{Number(r.thisYear || 0).toLocaleString()}</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.lastYear || 0).toLocaleString()}</td>
-                <td style={{ padding: '8px 6px' }}>{(Number(r.growth) >= 0 ? '+' : '') + Number(r.growth).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{formatRoundedNumber(r.thisYear)}</td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.lastYear)}</td>
+                <td style={{ padding: '8px 6px' }}>{(Number(r.growth) >= 0 ? '+' : '') + formatRoundedNumber(Math.abs(Number(r.growth || 0)))}</td>
                 <td style={{ padding: '8px 6px' }}>{Number(r.growthPct).toFixed(1)}%</td>
               </tr>
             ))}
@@ -619,14 +623,14 @@ function MarketShareTable({ rows, label }) {
             ) : rows.map((r, i) => (
               <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
                 <td style={{ padding: '8px 6px' }}>{r.company}</td>
-                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{Number(r.curr || 0).toLocaleString()}</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.last || 0).toLocaleString()}</td>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{formatRoundedNumber(r.curr)}</td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.last)}</td>
                 <td style={{
                   padding: '8px 6px',
                   background: (r.growth || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
                   color: (r.growth || 0) >= 0 ? '#064E3B' : '#7F1D1D',
                   fontWeight: 700
-                }}>{(r.growth >= 0 ? '+' : '') + Number(r.growth || 0).toLocaleString()}</td>
+                }}>{(r.growth >= 0 ? '+' : '') + formatRoundedNumber(Math.abs(Number(r.growth || 0)))}</td>
                 <td style={{
                   padding: '8px 6px',
                   background: (r.growthPct || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
@@ -646,7 +650,7 @@ function MarketShareTable({ rows, label }) {
                   background: (r.mop_up || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
                   color: (r.mop_up || 0) >= 0 ? '#064E3B' : '#7F1D1D',
                   fontWeight: 700
-                }}>{Number(r.mop_up || 0).toLocaleString()}</td>
+                }}>{formatRoundedNumber(r.mop_up)}</td>
               </tr>
             ))}
           </tbody>
@@ -1309,7 +1313,7 @@ function AIReplyPro({ text }) {
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                 <Badge tone="down">Δ {it.delta}</Badge>
                 <span style={{ fontSize: 12, color:'#475569' }}>
-                  MS {it.ms.toLocaleString()} • LY {it.ly.toLocaleString()}
+                  MS {formatRoundedNumber(it.ms)} • LY {formatRoundedNumber(it.ly)}
                 </span>
               </div>
             </div>
@@ -1449,7 +1453,7 @@ function AIReplyPro({ text }) {
               <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                 <Badge tone="down">Δ {it.delta}</Badge>
                 <span style={{ fontSize: 12, color:'#475569' }}>
-                  MS {it.ms.toLocaleString()} • LY {it.ly.toLocaleString()}
+                  MS {formatRoundedNumber(it.ms)} • LY {formatRoundedNumber(it.ly)}
                 </span>
               </div>
             </div>
@@ -1735,13 +1739,13 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               >
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ fontSize: 11, color: "#94A3B8" }}>MS</div>
-                  <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.ms.toLocaleString()}</div>
+                  <div style={{ fontWeight: 700, margin: "2px 0" }}>{formatRoundedNumber(st.ms)}</div>
                   <PercentBadge value={calcGrowth(st.ms, st.ms_ly)} />
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
                   <div style={{ fontSize: 11, color: "#94A3B8" }}>HSD</div>
-                  <div style={{ fontWeight: 700, margin: "2px 0" }}>{st.hsd.toLocaleString()}</div>
+                  <div style={{ fontWeight: 700, margin: "2px 0" }}>{formatRoundedNumber(st.hsd)}</div>
                   <PercentBadge value={calcGrowth(st.hsd, st.hsd_ly)} />
                 </div>
               </div>
@@ -2038,11 +2042,11 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
                 >
                   <div style={{ fontWeight: 600 }}>Cumulative</div>
-                  <div style={{ fontWeight: 700 }}>{(cumulativeSums?.ms ?? 0).toLocaleString()}</div>
-                  <div>{(cumulativeSums?.ms_ly ?? 0).toLocaleString()}</div>
+                  <div style={{ fontWeight: 700 }}>{formatRoundedNumber(cumulativeSums?.ms)}</div>
+                  <div>{formatRoundedNumber(cumulativeSums?.ms_ly)}</div>
                   <div><VolumeChange curr={cumulativeSums?.ms ?? 0} prev={cumulativeSums?.ms_ly ?? 0} /></div>
-                  <div style={{ fontWeight: 700 }}>{(cumulativeSums?.hsd ?? 0).toLocaleString()}</div>
-                  <div>{(cumulativeSums?.hsd_ly ?? 0).toLocaleString()}</div>
+                  <div style={{ fontWeight: 700 }}>{formatRoundedNumber(cumulativeSums?.hsd)}</div>
+                  <div>{formatRoundedNumber(cumulativeSums?.hsd_ly)}</div>
                   <div><VolumeChange curr={cumulativeSums?.hsd ?? 0} prev={cumulativeSums?.hsd_ly ?? 0} /></div>
                 </motion.div>
               ) : (
@@ -2055,11 +2059,11 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
                 >
                   <div>{formatMonth(selected.month)}</div>
-                  <div style={{ fontWeight: 700 }}>{selected.ms.toLocaleString()}</div>
-                  <div>{selected.ms_ly.toLocaleString()}</div>
+                  <div style={{ fontWeight: 700 }}>{formatRoundedNumber(selected.ms)}</div>
+                  <div>{formatRoundedNumber(selected.ms_ly)}</div>
                   <div><VolumeChange curr={selected.ms} prev={selected.ms_ly} /></div>
-                  <div style={{ fontWeight: 700 }}>{selected.hsd.toLocaleString()}</div>
-                  <div>{selected.hsd_ly.toLocaleString()}</div>
+                  <div style={{ fontWeight: 700 }}>{formatRoundedNumber(selected.hsd)}</div>
+                  <div>{formatRoundedNumber(selected.hsd_ly)}</div>
                   <div><VolumeChange curr={selected.hsd} prev={selected.hsd_ly} /></div>
                 </motion.div>
               )}
@@ -2139,11 +2143,11 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
         <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
           <td style={{ padding: '8px 6px' }}>{o.name}</td>
           <td style={{ padding: '8px 6px' }}>{o.company}</td>
-          <td style={{ padding: '8px 6px' }}>{o.ms.toLocaleString()}</td>
-          <td style={{ padding: '8px 6px' }}>{o.ms_ly.toLocaleString()}</td>
+          <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.ms)}</td>
+          <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.ms_ly)}</td>
           <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.ms} prev={o.ms_ly} /></td>
-          <td style={{ padding: '8px 6px' }}>{o.hsd.toLocaleString()}</td>
-          <td style={{ padding: '8px 6px' }}>{o.hsd_ly.toLocaleString()}</td>
+          <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.hsd)}</td>
+          <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(o.hsd_ly)}</td>
           <td style={{ padding: '8px 6px' }}><VolumeChange curr={o.hsd} prev={o.hsd_ly} /></td>
         </tr>
       ));
