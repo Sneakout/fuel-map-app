@@ -967,44 +967,50 @@ function buildTradingAreaGroupSectionRows(companyRows, groupName) {
 }
 
 function TradingAreaPerformanceTable({ rows, label, firstColumnLabel, includeCompany = false }) {
+  const cellStyle = { padding: '8px 8px', whiteSpace: 'nowrap', verticalAlign: 'middle' };
+  const nameCellStyle = { ...cellStyle, whiteSpace: 'normal' };
   return (
     <div style={{ marginTop: 20 }}>
       <h3 style={{ margin: '0 0 8px 0' }}>{label}</h3>
       <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
-        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse', tableLayout: 'auto' }}>
           <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
             <tr>
-              <th style={{ padding: '8px 6px' }}>{firstColumnLabel}</th>
-              {includeCompany ? <th style={{ padding: '8px 6px' }}>Company</th> : null}
-              <th style={{ padding: '8px 6px' }}>MS</th>
-              <th style={{ padding: '8px 6px' }}>MS LY</th>
-              <th style={{ padding: '8px 6px' }}>MS Change</th>
-              <th style={{ padding: '8px 6px' }}>MS Share</th>
-              <th style={{ padding: '8px 6px' }}>MS Share (LY)</th>
-              <th style={{ padding: '8px 6px' }}>HSD</th>
-              <th style={{ padding: '8px 6px' }}>HSD LY</th>
-              <th style={{ padding: '8px 6px' }}>HSD Change</th>
-              <th style={{ padding: '8px 6px' }}>HSD Share</th>
-              <th style={{ padding: '8px 6px' }}>HSD Share (LY)</th>
+              <th style={nameCellStyle}>{firstColumnLabel}</th>
+              {includeCompany ? <th style={cellStyle}>Company</th> : null}
+              <th style={cellStyle}>MS</th>
+              <th style={cellStyle}>MS LY</th>
+              <th style={cellStyle}>MS Change</th>
+              <th style={cellStyle}>MS Share</th>
+              <th style={cellStyle}>MS Share (LY)</th>
+              <th style={cellStyle}>MS pp change</th>
+              <th style={cellStyle}>HSD</th>
+              <th style={cellStyle}>HSD LY</th>
+              <th style={cellStyle}>HSD Change</th>
+              <th style={cellStyle}>HSD Share</th>
+              <th style={cellStyle}>HSD Share (LY)</th>
+              <th style={cellStyle}>HSD pp change</th>
             </tr>
           </thead>
           <tbody>
             {(!rows || rows.length === 0) ? (
-              <tr><td colSpan={includeCompany ? 12 : 11} style={{ padding: 16, color: '#64748B' }}>No data.</td></tr>
+              <tr><td colSpan={includeCompany ? 14 : 13} style={{ padding: 16, color: '#64748B' }}>No data.</td></tr>
             ) : rows.map((r, i) => (
               <tr key={`${r.name}-${i}`} style={{ borderTop: '1px solid #F1F5F9', fontWeight: r.isTotal ? 700 : 400, background: r.isTotal ? 'rgba(248,250,252,0.8)' : 'transparent' }}>
-                <td style={{ padding: '8px 6px' }}>{r.name}</td>
-                {includeCompany ? <td style={{ padding: '8px 6px' }}>{r.company}</td> : null}
-                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.ms)}</td>
-                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.ms_ly)}</td>
-                <td style={{ padding: '8px 6px' }}><VolumeChange curr={r.ms} prev={r.ms_ly} /></td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.share || 0).toFixed(2)}%</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.share_ly || 0).toFixed(2)}% <span style={{ color:'#64748B' }}>({Number(r.share_change || 0) >= 0 ? '+' : ''}{Number(r.share_change || 0).toFixed(2)} pp)</span></td>
-                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.hsd)}</td>
-                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.hsd_ly)}</td>
-                <td style={{ padding: '8px 6px' }}><VolumeChange curr={r.hsd} prev={r.hsd_ly} /></td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.hsd_share || 0).toFixed(2)}%</td>
-                <td style={{ padding: '8px 6px' }}>{Number(r.hsd_share_ly || 0).toFixed(2)}% <span style={{ color:'#64748B' }}>({Number(r.hsd_share_change || 0) >= 0 ? '+' : ''}{Number(r.hsd_share_change || 0).toFixed(2)} pp)</span></td>
+                <td style={nameCellStyle}>{r.name}</td>
+                {includeCompany ? <td style={cellStyle}>{r.company}</td> : null}
+                <td style={cellStyle}>{formatRoundedNumber(r.ms)}</td>
+                <td style={cellStyle}>{formatRoundedNumber(r.ms_ly)}</td>
+                <td style={cellStyle}><VolumeChange curr={r.ms} prev={r.ms_ly} /></td>
+                <td style={cellStyle}>{Number(r.share || 0).toFixed(2)}%</td>
+                <td style={cellStyle}>{Number(r.share_ly || 0).toFixed(2)}%</td>
+                <td style={cellStyle}><ShareChange value={r.share_change || 0} /></td>
+                <td style={cellStyle}>{formatRoundedNumber(r.hsd)}</td>
+                <td style={cellStyle}>{formatRoundedNumber(r.hsd_ly)}</td>
+                <td style={cellStyle}><VolumeChange curr={r.hsd} prev={r.hsd_ly} /></td>
+                <td style={cellStyle}>{Number(r.hsd_share || 0).toFixed(2)}%</td>
+                <td style={cellStyle}>{Number(r.hsd_share_ly || 0).toFixed(2)}%</td>
+                <td style={cellStyle}><ShareChange value={r.hsd_share_change || 0} /></td>
               </tr>
             ))}
           </tbody>
