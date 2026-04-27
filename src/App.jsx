@@ -223,6 +223,16 @@ function formatRoundedNumber(value) {
   return Math.round(Number(value || 0)).toLocaleString("en-IN");
 }
 
+const PSU_COMPANIES = new Set(["IOC", "BPC", "HPCL", "HPC"]);
+const PVT_COMPANIES = new Set(["MRPL", "NEL", "RIL"]);
+
+function companyGroup(company) {
+  const key = (company || "").toString().trim().toUpperCase();
+  if (PSU_COMPANIES.has(key)) return "PSU";
+  if (PVT_COMPANIES.has(key)) return "Pvt";
+  return null;
+}
+
 function PercentBadge({ value }) {
   const positive = value >= 0;
   return (
@@ -780,6 +790,74 @@ function TradingAreaLossTable({ rows, label, onAreaSelect }) {
                 <td style={{ padding: '8px 6px' }}>{Number(r.share || 0).toFixed(2)}%</td>
                 <td style={{ padding: '8px 6px' }}>{Number(r.share_ly || 0).toFixed(2)}%</td>
                 <td style={{ padding: '8px 6px' }}><ShareChange value={r.share_change || 0} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function buildTradingAreaGroupRows(outlets) {
+  const totals = (outlets || []).reduce((acc, o) => {
+    const group = companyGroup(o.company);
+    if (!group) return acc;
+    acc[group].ms += Number(o.ms || 0);
+    acc[group].ms_ly += Number(o.ms_ly || 0);
+    acc[group].hsd += Number(o.hsd || 0);
+    acc[group].hsd_ly += Number(o.hsd_ly || 0);
+    return acc;
+  }, {
+    PSU: { label: "PSU", ms: 0, ms_ly: 0, hsd: 0, hsd_ly: 0 },
+    Pvt: { label: "Pvt", ms: 0, ms_ly: 0, hsd: 0, hsd_ly: 0 },
+  });
+
+  const totalMs = Object.values(totals).reduce((sum, row) => sum + row.ms, 0);
+  const totalMsLy = Object.values(totals).reduce((sum, row) => sum + row.ms_ly, 0);
+  const totalHsd = Object.values(totals).reduce((sum, row) => sum + row.hsd, 0);
+  const totalHsdLy = Object.values(totals).reduce((sum, row) => sum + row.hsd_ly, 0);
+
+  return Object.values(totals).map((row) => ({
+    ...row,
+    ms_share: totalMs ? (row.ms / totalMs) * 100 : 0,
+    ms_share_ly: totalMsLy ? (row.ms_ly / totalMsLy) * 100 : 0,
+    hsd_share: totalHsd ? (row.hsd / totalHsd) * 100 : 0,
+    hsd_share_ly: totalHsdLy ? (row.hsd_ly / totalHsdLy) * 100 : 0,
+  }));
+}
+
+function TradingAreaGroupTable({ rows, label }) {
+  return (
+    <div style={{ marginTop: 20 }}>
+      <h3 style={{ margin: '0 0 8px 0' }}>{label}</h3>
+      <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+            <tr>
+              <th style={{ padding: '8px 6px' }}>Group</th>
+              <th style={{ padding: '8px 6px' }}>MS</th>
+              <th style={{ padding: '8px 6px' }}>MS LY</th>
+              <th style={{ padding: '8px 6px' }}>MS Change</th>
+              <th style={{ padding: '8px 6px' }}>MS Share</th>
+              <th style={{ padding: '8px 6px' }}>HSD</th>
+              <th style={{ padding: '8px 6px' }}>HSD LY</th>
+              <th style={{ padding: '8px 6px' }}>HSD Change</th>
+              <th style={{ padding: '8px 6px' }}>HSD Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={r.label} style={{ borderTop: '1px solid #F1F5F9' }}>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{r.label}</td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.ms)}</td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.ms_ly)}</td>
+                <td style={{ padding: '8px 6px' }}><VolumeChange curr={r.ms} prev={r.ms_ly} /></td>
+                <td style={{ padding: '8px 6px' }}>{r.ms_share.toFixed(2)}% <span style={{ color: '#64748B' }}>({r.ms_share_ly.toFixed(2)}% LY)</span></td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.hsd)}</td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.hsd_ly)}</td>
+                <td style={{ padding: '8px 6px' }}><VolumeChange curr={r.hsd} prev={r.hsd_ly} /></td>
+                <td style={{ padding: '8px 6px' }}>{r.hsd_share.toFixed(2)}% <span style={{ color: '#64748B' }}>({r.hsd_share_ly.toFixed(2)}% LY)</span></td>
               </tr>
             ))}
           </tbody>
@@ -2037,6 +2115,14 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 acc.hsd_ly += Number(o.hsd_ly || 0);
                 return acc;
               }, { ms: 0, ms_ly: 0, hsd: 0, hsd_ly: 0 });
+              const groupRows = buildTradingAreaGroupRows(areaOutlets);
+              const outletCount = areaOutlets.length || 0;
+              const areaAverages = {
+                ms: outletCount ? areaTotals.ms / outletCount : 0,
+                ms_ly: outletCount ? areaTotals.ms_ly / outletCount : 0,
+                hsd: outletCount ? areaTotals.hsd / outletCount : 0,
+                hsd_ly: outletCount ? areaTotals.hsd_ly / outletCount : 0,
+              };
               const marketRows = pageIndex === 1
                 ? computeCumulativeMarketShareForArea(areaOutletsBase, startMonth, latestMonth)
                 : computeMarketShare(areaNorm);
@@ -2118,6 +2204,28 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                         <div><VolumeChange curr={areaTotals.hsd} prev={areaTotals.hsd_ly} /></div>
                       </motion.div>
                     </AnimatePresence>
+                  </div>
+
+                  <TradingAreaGroupTable rows={groupRows} label="Trading Area - PSU vs Pvt" />
+
+                  <div style={{ marginTop: 20 }}>
+                    <h3 style={{ margin: '0 0 8px 0' }}>Trading Area - Average Sales</h3>
+                    <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, alignItems: 'center' }}>
+                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Outlets</div>
+                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg MS</div>
+                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg MS LY</div>
+                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg HSD</div>
+                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg HSD LY</div>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, alignItems: 'center', marginTop: 10 }}>
+                        <div style={{ fontWeight: 700 }}>{outletCount}</div>
+                        <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaAverages.ms)}</div>
+                        <div>{formatRoundedNumber(areaAverages.ms_ly)}</div>
+                        <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaAverages.hsd)}</div>
+                        <div>{formatRoundedNumber(areaAverages.hsd_ly)}</div>
+                      </div>
+                    </div>
                   </div>
 
                   <div style={{ marginTop: 20 }}>
