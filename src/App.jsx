@@ -2049,9 +2049,13 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                         <button
                           type="button"
                           onClick={closeTradingAreaAnalysis}
-                          style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F8FAFC', cursor:'pointer', fontWeight: 700 }}
+                          aria-label="Back to trading area rankings"
+                          title="Back"
+                          style={{ width: 36, height: 36, borderRadius: 8, border: 'none', background:'#F8FAFC', cursor:'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
                         >
-                          Back
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+                            <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
                         </button>
                         <h2 style={{ margin: 0 }}>{taSelected.trading_area}</h2>
                       </div>
