@@ -1196,6 +1196,8 @@ export default function FuelMapApp() {
   const [iconsMap, setIconsMap] = useState({});
   const [selected, setSelected] = useState(null);
   const [taSelected, setTaSelected] = useState(null);
+  const [leftPaneWidthPct, setLeftPaneWidthPct] = useState(50);
+  const [isResizing, setIsResizing] = useState(false);
   const [animState, setAnimState] = useState({ mode: 'idle', key: 0 });
 // pick latest month from CSV records, falling back to calendar if empty
 const [latestMonth, setLatestMonth] = useState(() => {
@@ -1261,6 +1263,30 @@ const [aiMode, setAiMode] = useState(false);
 const [aiInput, setAiInput] = useState("");
 const [chatHistory, setChatHistory] = useState([]); 
 const [aiBusy, setAiBusy] = useState(false);
+
+useEffect(() => {
+  if (!isResizing) return undefined;
+
+  function handlePointerMove(e) {
+    const width = window.innerWidth || 1;
+    const nextPct = Math.min(80, Math.max(20, (e.clientX / width) * 100));
+    setLeftPaneWidthPct(nextPct);
+  }
+
+  function handlePointerUp() {
+    setIsResizing(false);
+  }
+
+  window.addEventListener("mousemove", handlePointerMove);
+  window.addEventListener("mouseup", handlePointerUp);
+  window.addEventListener("mouseleave", handlePointerUp);
+
+  return () => {
+    window.removeEventListener("mousemove", handlePointerMove);
+    window.removeEventListener("mouseup", handlePointerUp);
+    window.removeEventListener("mouseleave", handlePointerUp);
+  };
+}, [isResizing]);
 
 async function handleAISubmit(e) {
   e.preventDefault();
@@ -1944,8 +1970,8 @@ function AIReplyPro({ text }) {
     }, []);
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-      <div style={{ width: '50%', minWidth: '20%', maxWidth: '80%', display: 'flex', flexDirection: 'column', height: '100vh' }}>
+    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden', cursor: isResizing ? 'col-resize' : 'default' }}>
+      <div style={{ width: `${leftPaneWidthPct}%`, minWidth: '20%', maxWidth: '80%', display: 'flex', flexDirection: 'column', height: '100vh' }}>
 {/* LEFT COLUMN: Map + Search (replace prior inner `div style={{ flex: 1 }}`) */}
 <div style={{ flex: 1, position: 'relative' }}>
   {/* Search box overlay */}
@@ -2134,7 +2160,27 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
       </div>
 
-      <aside ref={rightPaneRef}style={{ width: '50%', minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize panels"
+        onMouseDown={() => setIsResizing(true)}
+        style={{
+          width: 10,
+          cursor: 'col-resize',
+          background: isResizing ? '#E2E8F0' : '#F8FAFC',
+          borderLeft: '1px solid #E2E8F0',
+          borderRight: '1px solid #E2E8F0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          userSelect: 'none'
+        }}
+      >
+        <div style={{ width: 4, height: 36, borderRadius: 999, background: '#CBD5E1' }} />
+      </div>
+
+      <aside ref={rightPaneRef}style={{ width: `${100 - leftPaneWidthPct}%`, minWidth: '20%', background: '#fff', overflow: 'auto', height: '100vh' }}>
 <div style={{ position:'relative', padding: 16, height: '100%' }}>
   {aiMode ? (
     /* ================= AI CHAT ONLY ================ */
