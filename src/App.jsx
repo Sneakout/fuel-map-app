@@ -966,6 +966,17 @@ function buildTradingAreaGroupSectionRows(companyRows, groupName) {
   ];
 }
 
+function buildTradingAreaCompanyMergedRows(companyRows) {
+  const psuRows = buildTradingAreaGroupSectionRows(companyRows, "PSU");
+  const pvtRows = buildTradingAreaGroupSectionRows(companyRows, "Pvt");
+
+  return [
+    ...(companyRows || []),
+    ...(psuRows.length ? [psuRows[psuRows.length - 1]] : []),
+    ...(pvtRows.length ? [pvtRows[pvtRows.length - 1]] : []),
+  ];
+}
+
 function TradingAreaPerformanceTable({ rows, label, firstColumnLabel, includeCompany = false }) {
   const cellStyle = { padding: '8px 8px', whiteSpace: 'nowrap', verticalAlign: 'middle' };
   const nameCellStyle = { ...cellStyle, whiteSpace: 'normal' };
@@ -2316,8 +2327,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               }, { ms: 0, ms_ly: 0, hsd: 0, hsd_ly: 0 });
               const outletRows = buildTradingAreaOutletRows(areaOutlets, areaTotals);
               const companyRows = buildTradingAreaCompanyRows(areaOutlets);
-              const psuRows = buildTradingAreaGroupSectionRows(companyRows, "PSU");
-              const pvtRows = buildTradingAreaGroupSectionRows(companyRows, "Pvt");
+              const companyMergedRows = buildTradingAreaCompanyMergedRows(companyRows);
               const outletCount = areaOutlets.length || 0;
               const areaAverages = {
                 ms: outletCount ? areaTotals.ms / outletCount : 0,
@@ -2420,20 +2430,8 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   />
 
                   <TradingAreaPerformanceTable
-                    rows={companyRows}
+                    rows={companyMergedRows}
                     label="Trading Area - Company"
-                    firstColumnLabel="Company"
-                  />
-
-                  <TradingAreaPerformanceTable
-                    rows={psuRows}
-                    label="Trading Area - PSU"
-                    firstColumnLabel="Company"
-                  />
-
-                  <TradingAreaPerformanceTable
-                    rows={pvtRows}
-                    label="Trading Area - Pvt"
                     firstColumnLabel="Company"
                   />
 
