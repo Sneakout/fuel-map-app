@@ -2376,14 +2376,17 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   </div>
 
                   <div style={{ marginTop: 16 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 1fr)', gap: 12, alignItems: 'center' }}>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Mode</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Outlets</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS Change</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg MS</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD LY</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>HSD Change</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg HSD</div>
                     </div>
 
                     <AnimatePresence mode="wait">
@@ -2393,15 +2396,18 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -8 }}
                         transition={{ duration: 0.3 }}
-                        style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 12, alignItems: 'center' }}
+                        style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 1fr)', gap: 12, alignItems: 'center' }}
                       >
                         <div style={{ fontWeight: 600 }}>{pageIndex === 1 ? 'Cumulative' : formatMonth(latestMonth)}</div>
+                        <div style={{ fontWeight: 700 }}>{outletCount}</div>
                         <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaTotals.ms)}</div>
                         <div>{formatRoundedNumber(areaTotals.ms_ly)}</div>
                         <div><VolumeChange curr={areaTotals.ms} prev={areaTotals.ms_ly} /></div>
+                        <div>{formatRoundedNumber(areaAverages.ms)}</div>
                         <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaTotals.hsd)}</div>
                         <div>{formatRoundedNumber(areaTotals.hsd_ly)}</div>
                         <div><VolumeChange curr={areaTotals.hsd} prev={areaTotals.hsd_ly} /></div>
+                        <div>{formatRoundedNumber(areaAverages.hsd)}</div>
                       </motion.div>
                     </AnimatePresence>
                   </div>
@@ -2431,25 +2437,6 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                     firstColumnLabel="Company"
                   />
 
-                  <div style={{ marginTop: 20 }}>
-                    <h3 style={{ margin: '0 0 8px 0' }}>Trading area Average sales</h3>
-                    <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, alignItems: 'center' }}>
-                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Outlets</div>
-                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg MS</div>
-                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg MS LY</div>
-                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg HSD</div>
-                        <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Avg HSD LY</div>
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, alignItems: 'center', marginTop: 10 }}>
-                        <div style={{ fontWeight: 700 }}>{outletCount}</div>
-                        <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaAverages.ms)}</div>
-                        <div>{formatRoundedNumber(areaAverages.ms_ly)}</div>
-                        <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaAverages.hsd)}</div>
-                        <div>{formatRoundedNumber(areaAverages.hsd_ly)}</div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               );
             })()}
