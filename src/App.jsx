@@ -247,6 +247,12 @@ function formatMonthRange(startMonth, endMonth) {
   return `${formatMonth(startMonth)} → ${formatMonth(endMonth)}`;
 }
 
+function formatFiscalRangeLabel(startMonth, endMonth) {
+  const start = formatMonth(startMonth).replace(" ", " ");
+  const end = formatMonth(endMonth);
+  return `${start} - ${end}`;
+}
+
 function PercentBadge({ value }) {
   const positive = value >= 0;
   return (
@@ -2336,6 +2342,9 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 hsd_ly: outletCount ? areaTotals.hsd_ly / outletCount : 0,
               };
               const cumulativeRangeLabel = formatMonthRange(startMonth, latestMonth);
+              const periodLabel = pageIndex === 1
+                ? formatFiscalRangeLabel(startMonth, latestMonth)
+                : formatMonth(latestMonth);
 
               return (
                 <div>
@@ -2387,7 +2396,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
                   <div style={{ marginTop: 16 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 1fr)', gap: 12, alignItems: 'center' }}>
-                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Mode</div>
+                      <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Period</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>Outlets</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS</div>
                       <div style={{ fontSize: 12, color: '#94A3B8', fontWeight: 700 }}>MS LY</div>
@@ -2408,7 +2417,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                         transition={{ duration: 0.3 }}
                         style={{ display: 'grid', gridTemplateColumns: 'repeat(11, 1fr)', gap: 12, alignItems: 'center' }}
                       >
-                        <div style={{ fontWeight: 600 }}>{pageIndex === 1 ? 'Cumulative' : formatMonth(latestMonth)}</div>
+                        <div style={{ fontWeight: 600 }}>{periodLabel}</div>
                         <div style={{ fontWeight: 700 }}>{outletCount}</div>
                         <div style={{ fontWeight: 700 }}>{formatRoundedNumber(areaTotals.ms)}</div>
                         <div>{formatRoundedNumber(areaTotals.ms_ly)}</div>
