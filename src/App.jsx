@@ -418,6 +418,67 @@ function sortRowsByGrowth(rows, direction) {
   return copy;
 }
 
+function buildIOCLossTradingAreaRows(stations, { fuel = "ms", mode = "monthly", startMonth, endMonth } = {}) {
+  const byArea = {};
+
+  (stations || []).forEach((s) => {
+    const areaKey = (s.trading_area_norm || (s.trading_area || "").toLowerCase() || "unknown").toString();
+    const areaName = (s.trading_area || "Unknown").toString().trim() || "Unknown";
+    const company = (s.company || "PVT").toString().trim().toUpperCase();
+    const volumes = mode === "cumulative"
+      ? cumulativeForOutletRows(s.rows || [], startMonth, endMonth)
+      : {
+          ms: Number(s.ms || 0),
+          ms_ly: Number(s.ms_ly || 0),
+          hsd: Number(s.hsd || 0),
+          hsd_ly: Number(s.hsd_ly || 0),
+        };
+
+    const curr = fuel === "hsd" ? Number(volumes.hsd || 0) : Number(volumes.ms || 0);
+    const last = fuel === "hsd" ? Number(volumes.hsd_ly || 0) : Number(volumes.ms_ly || 0);
+
+    if (!byArea[areaKey]) {
+      byArea[areaKey] = {
+        area: areaName,
+        totalCurr: 0,
+        totalLast: 0,
+        companies: {},
+      };
+    }
+
+    byArea[areaKey].totalCurr += curr;
+    byArea[areaKey].totalLast += last;
+    if (!byArea[areaKey].companies[company]) {
+      byArea[areaKey].companies[company] = { curr: 0, last: 0 };
+    }
+    byArea[areaKey].companies[company].curr += curr;
+    byArea[areaKey].companies[company].last += last;
+  });
+
+  return Object.values(byArea)
+    .map((area) => {
+      const ioc = area.companies.IOC || { curr: 0, last: 0 };
+      const growth = ioc.curr - ioc.last;
+      const growthPct = ioc.last === 0 ? (ioc.curr === 0 ? 0 : 100) : (growth / ioc.last) * 100;
+      const share = area.totalCurr ? (ioc.curr / area.totalCurr) * 100 : 0;
+      const share_ly = area.totalLast ? (ioc.last / area.totalLast) * 100 : 0;
+      const share_change = share - share_ly;
+      return {
+        area: area.area,
+        curr: ioc.curr,
+        last: ioc.last,
+        growth,
+        growthPct,
+        share,
+        share_ly,
+        share_change,
+      };
+    })
+    .filter((row) => row.share_change < 0)
+    .sort((a, b) => a.share_change - b.share_change)
+    .slice(0, 10);
+}
+
 // Simple reusable table (columns fixed per your spec)
 function GrowthTable({ rows, label }) {
   return (
@@ -651,6 +712,56 @@ function MarketShareTable({ rows, label }) {
                   color: (r.mop_up || 0) >= 0 ? '#064E3B' : '#7F1D1D',
                   fontWeight: 700
                 }}>{formatRoundedNumber(r.mop_up)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function TradingAreaLossTable({ rows, label }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <h4 style={{ margin: '0 0 6px 0' }}>{label}</h4>
+      <div style={{ background: '#fff', borderRadius: 8, padding: 12, boxShadow: '0 1px 2px rgba(2,6,23,0.04)' }}>
+        <table style={{ width: '100%', fontSize: 13, borderCollapse: 'collapse' }}>
+          <thead style={{ color: '#94A3B8', textAlign: 'left' }}>
+            <tr>
+              <th style={{ padding: '8px 6px' }}>Trading area</th>
+              <th style={{ padding: '8px 6px' }}>IOC current sales</th>
+              <th style={{ padding: '8px 6px' }}>IOC last year sales</th>
+              <th style={{ padding: '8px 6px' }}>Growth</th>
+              <th style={{ padding: '8px 6px' }}>Growth %</th>
+              <th style={{ padding: '8px 6px' }}>IOC current share</th>
+              <th style={{ padding: '8px 6px' }}>IOC last year share</th>
+              <th style={{ padding: '8px 6px' }}>Share loss</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(!rows || rows.length === 0) ? (
+              <tr><td colSpan={8} style={{ padding: 16, color: '#64748B' }}>No IOC losing trading areas found.</td></tr>
+            ) : rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+                <td style={{ padding: '8px 6px', fontWeight: 700 }}>{r.area}</td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.curr)}</td>
+                <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.last)}</td>
+                <td style={{
+                  padding: '8px 6px',
+                  background: (r.growth || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
+                  color: (r.growth || 0) >= 0 ? '#064E3B' : '#7F1D1D',
+                  fontWeight: 700
+                }}>{(r.growth >= 0 ? '+' : '') + formatRoundedNumber(Math.abs(Number(r.growth || 0)))}</td>
+                <td style={{
+                  padding: '8px 6px',
+                  background: (r.growthPct || 0) >= 0 ? '#ECFDF5' : '#FEF2F2',
+                  color: (r.growthPct || 0) >= 0 ? '#064E3B' : '#7F1D1D',
+                  fontWeight: 700
+                }}>{Number(r.growthPct || 0).toFixed(1)}%</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.share || 0).toFixed(2)}%</td>
+                <td style={{ padding: '8px 6px' }}>{Number(r.share_ly || 0).toFixed(2)}%</td>
+                <td style={{ padding: '8px 6px' }}><ShareChange value={r.share_change || 0} /></td>
               </tr>
             ))}
           </tbody>
@@ -1899,6 +2010,18 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFF7ED', cursor:'pointer' }}
           >Cumulative Market share</button>
 
+          <button
+            onClick={() => setPageIndex(8)}
+            title="Highest losing trading area (IOC) - selected month"
+            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF3C7', cursor:'pointer' }}
+          >IOC losing TA Month</button>
+
+          <button
+            onClick={() => setPageIndex(9)}
+            title="Highest losing trading area (IOC) - cumulative"
+            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FCE7F3', cursor:'pointer' }}
+          >IOC losing TA Cumulative</button>
+
           {/* Growth/MarketShare pages when no RO is selected */}
           {pageIndex >= 2 && (() => {
             const startMonth = fiscalYearStartMonth(latestMonth);
@@ -1933,6 +2056,30 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   </h3>
                   <MarketShareTable rows={msCum}  label="MS | Company Market Share (Cumulative)" />
                   <MarketShareTable rows={hsdCum} label="HSD | Company Market Share (Cumulative)" />
+                </div>
+              );
+            }
+            if (pageIndex === 8) {
+              const losingMonthMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "monthly" });
+              const losingMonthHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "monthly" });
+              return (
+                <div style={{ marginTop: 14 }}>
+                  <h3 style={{ margin: '0 0 8px 0' }}>Highest losing trading area | IOC | Selected Month</h3>
+                  <TradingAreaLossTable rows={losingMonthMS} label="MS | Top 10 IOC losing trading areas" />
+                  <TradingAreaLossTable rows={losingMonthHSD} label="HSD | Top 10 IOC losing trading areas" />
+                </div>
+              );
+            }
+            if (pageIndex === 9) {
+              const losingCumMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "cumulative", startMonth, endMonth: latestMonth });
+              const losingCumHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "cumulative", startMonth, endMonth: latestMonth });
+              return (
+                <div style={{ marginTop: 14 }}>
+                  <h3 style={{ margin: '0 0 8px 0' }}>
+                    Highest losing trading area | IOC | Cumulative Apr → {formatMonth(latestMonth)}
+                  </h3>
+                  <TradingAreaLossTable rows={losingCumMS} label="MS | Top 10 IOC losing trading areas" />
+                  <TradingAreaLossTable rows={losingCumHSD} label="HSD | Top 10 IOC losing trading areas" />
                 </div>
               );
             }
@@ -2185,8 +2332,9 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
       let rows = [];
 
       if (areaNorm) {
+        const startMonth = fiscalYearStartMonth(latestMonth);
         rows = pageIndex === 1
-          ? computeCumulativeMarketShareForArea(outletsInAreaNorm(areaNorm), `${(latestMonth || "").split("-")[0]}-04`, latestMonth)
+          ? computeCumulativeMarketShareForArea(outletsInAreaNorm(areaNorm), startMonth, latestMonth)
           : computeMarketShare(areaNorm);
       }
 
