@@ -527,6 +527,28 @@ function TradingAreaLossTable({ rows, label, onAreaSelect }) {
   );
 }
 
+function LossRankingSelector({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <label style={{ color: "#64748B", fontSize: 13, fontWeight: 600 }}>Rank by</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid #E6EEF3",
+          background: "#fff",
+          fontSize: 13,
+        }}
+      >
+        <option value="share">Market share loss</option>
+        <option value="volume">Volume loss</option>
+      </select>
+    </div>
+  );
+}
+
 
 function DeselectOnMapClick({ onDeselect }) {
   useMapEvents({
@@ -728,6 +750,7 @@ const [latestMonth, setLatestMonth] = useState(() => {
 
   const mapRef = useRef(null);
   const [pageIndex, setPageIndex] = useState(0);
+  const [iocLossRankBy, setIocLossRankBy] = useState("share");
   // safe memoized cumulative sums for currently selected RO
 const cumulativeSums = useMemo(() => {
   if (!selected) return null;
@@ -1883,26 +1906,32 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               );
             }
             if (pageIndex === 8) {
-              const losingMonthMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "monthly" });
-              const losingMonthHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "monthly" });
+              const losingMonthMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "monthly", rankBy: iocLossRankBy });
+              const losingMonthHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "monthly", rankBy: iocLossRankBy });
               return (
                 <div style={{ marginTop: 14 }}>
-                  <h3 style={{ margin: '0 0 8px 0' }}>Highest losing trading area | IOC | Selected Month</h3>
-                  <TradingAreaLossTable rows={losingMonthMS} label="MS | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
-                  <TradingAreaLossTable rows={losingMonthHSD} label="HSD | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                    <h3 style={{ margin: 0 }}>Highest losing trading area | IOC | Selected Month</h3>
+                    <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
+                  </div>
+                  <TradingAreaLossTable rows={losingMonthMS} label={`MS | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
+                  <TradingAreaLossTable rows={losingMonthHSD} label={`HSD | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
                 </div>
               );
             }
             if (pageIndex === 9) {
-              const losingCumMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "cumulative", startMonth, endMonth: latestMonth });
-              const losingCumHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "cumulative", startMonth, endMonth: latestMonth });
+              const losingCumMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "cumulative", startMonth, endMonth: latestMonth, rankBy: iocLossRankBy });
+              const losingCumHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "cumulative", startMonth, endMonth: latestMonth, rankBy: iocLossRankBy });
               return (
                 <div style={{ marginTop: 14 }}>
-                  <h3 style={{ margin: '0 0 8px 0' }}>
-                    Highest losing trading area | IOC | Cumulative Apr → {formatMonth(latestMonth)}
-                  </h3>
-                  <TradingAreaLossTable rows={losingCumMS} label="MS | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
-                  <TradingAreaLossTable rows={losingCumHSD} label="HSD | Top 10 IOC losing trading areas" onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                    <h3 style={{ margin: 0 }}>
+                      Highest losing trading area | IOC | Cumulative Apr → {formatMonth(latestMonth)}
+                    </h3>
+                    <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
+                  </div>
+                  <TradingAreaLossTable rows={losingCumMS} label={`MS | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
+                  <TradingAreaLossTable rows={losingCumHSD} label={`HSD | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
                 </div>
               );
             }

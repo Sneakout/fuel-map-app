@@ -161,7 +161,10 @@ export function sortRowsByGrowth(rows, direction) {
   return copy;
 }
 
-export function buildIOCLossTradingAreaRows(stations, { fuel = "ms", mode = "monthly", startMonth, endMonth } = {}) {
+export function buildIOCLossTradingAreaRows(
+  stations,
+  { fuel = "ms", mode = "monthly", startMonth, endMonth, rankBy = "share" } = {}
+) {
   const byArea = {};
   (stations || []).forEach((s) => {
     const areaKey = (s.trading_area_norm || (s.trading_area || "").toLowerCase() || "unknown").toString();
@@ -186,7 +189,13 @@ export function buildIOCLossTradingAreaRows(stations, { fuel = "ms", mode = "mon
     const share = area.totalCurr ? (ioc.curr / area.totalCurr) * 100 : 0;
     const share_ly = area.totalLast ? (ioc.last / area.totalLast) * 100 : 0;
     return { area: area.area, curr: ioc.curr, last: ioc.last, growth, growthPct, share, share_ly, share_change: share - share_ly };
-  }).filter((row) => row.share_change < 0).sort((a, b) => a.share_change - b.share_change).slice(0, 10);
+  }).filter((row) => {
+    if (rankBy === "volume") return row.growth < 0;
+    return row.share_change < 0;
+  }).sort((a, b) => {
+    if (rankBy === "volume") return a.growth - b.growth;
+    return a.share_change - b.share_change;
+  }).slice(0, 10);
 }
 
 export function summarizeByCompany(rows) {
