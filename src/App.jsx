@@ -549,6 +549,28 @@ function LossRankingSelector({ value, onChange }) {
   );
 }
 
+function MarketShareScopeSelector({ value, onChange }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <label style={{ color: "#64748B", fontSize: 13, fontWeight: 600 }}>Scope</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid #E6EEF3",
+          background: "#fff",
+          fontSize: 13,
+        }}
+      >
+        <option value="industry">Industry</option>
+        <option value="psu">PSU</option>
+      </select>
+    </div>
+  );
+}
+
 
 function DeselectOnMapClick({ onDeselect }) {
   useMapEvents({
@@ -751,6 +773,7 @@ const [latestMonth, setLatestMonth] = useState(() => {
   const mapRef = useRef(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [iocLossRankBy, setIocLossRankBy] = useState("share");
+  const [marketShareScope, setMarketShareScope] = useState("industry");
   // safe memoized cumulative sums for currently selected RO
 const cumulativeSums = useMemo(() => {
   if (!selected) return null;
@@ -1879,29 +1902,35 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const cumHSD     = buildCumulativeGrowthRowsHSD(stations, startMonth, latestMonth);
 
             // Build data for Market share pages (All stations)
-            const msMonthly  = marketShareRowsAllMonthly_MS(stations);
-            const hsdMonthly = marketShareRowsAllMonthly_HSD(stations);
-            const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth);
-            const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth);
+            const msMonthly  = marketShareRowsAllMonthly_MS(stations, marketShareScope);
+            const hsdMonthly = marketShareRowsAllMonthly_HSD(stations, marketShareScope);
+            const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth, marketShareScope);
+            const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth, marketShareScope);
 
             // Decide which page to show
             if (pageIndex === 6) {
               return (
                 <div style={{ marginTop: 14 }}>
-                  <h3 style={{ margin: '0 0 8px 0' }}>Market share | Selected Month</h3>
-                  <MarketShareTable rows={msMonthly}  label="MS | Company-wise Market Share" />
-                  <MarketShareTable rows={hsdMonthly} label="HSD | Company-wise Market Share" />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                    <h3 style={{ margin: 0 }}>Market share | Selected Month</h3>
+                    <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
+                  </div>
+                  <MarketShareTable rows={msMonthly}  label={`MS | Company-wise Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
+                  <MarketShareTable rows={hsdMonthly} label={`HSD | Company-wise Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
                 </div>
               );
             }
             if (pageIndex === 7) {
               return (
                 <div style={{ marginTop: 14 }}>
-                  <h3 style={{ margin: '0 0 8px 0' }}>
-                    Cumulative Market share | Apr → {formatMonth(latestMonth)}
-                  </h3>
-                  <MarketShareTable rows={msCum}  label="MS | Company Market Share (Cumulative)" />
-                  <MarketShareTable rows={hsdCum} label="HSD | Company Market Share (Cumulative)" />
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                    <h3 style={{ margin: 0 }}>
+                      Cumulative Market share | Apr → {formatMonth(latestMonth)}
+                    </h3>
+                    <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
+                  </div>
+                  <MarketShareTable rows={msCum}  label={`MS | Company Market Share (Cumulative ${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
+                  <MarketShareTable rows={hsdCum} label={`HSD | Company Market Share (Cumulative ${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
                 </div>
               );
             }

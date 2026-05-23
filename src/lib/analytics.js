@@ -211,11 +211,12 @@ export function summarizeByCompany(rows) {
   return Object.values(map).sort((a, b) => b.total - a.total);
 }
 
-function marketShareRowsAll(stations, metric, cumulative, startMonth, endMonth) {
+function marketShareRowsAll(stations, metric, cumulative, startMonth, endMonth, scope = "industry") {
   const by = {};
   let total = 0, total_ly = 0;
   (stations || []).forEach((s) => {
     const comp = (s.company || "PVT").toString().trim().toUpperCase();
+    if (scope === "psu" && !PSU_COMPANIES.has(comp)) return;
     const source = cumulative ? cumulativeForOutletRows(s.rows || [], startMonth, endMonth) : s;
     const curr = Number(source[metric] || 0);
     const last = Number(source[`${metric}_ly`] || 0);
@@ -237,10 +238,10 @@ function marketShareRowsAll(stations, metric, cumulative, startMonth, endMonth) 
   }).sort((a, b) => b.share - a.share);
 }
 
-export const marketShareRowsAllMonthly_MS = (stations) => marketShareRowsAll(stations, "ms", false);
-export const marketShareRowsAllMonthly_HSD = (stations) => marketShareRowsAll(stations, "hsd", false);
-export const marketShareRowsAllCumulative_MS = (stations, startMonth, endMonth) => marketShareRowsAll(stations, "ms", true, startMonth, endMonth);
-export const marketShareRowsAllCumulative_HSD = (stations, startMonth, endMonth) => marketShareRowsAll(stations, "hsd", true, startMonth, endMonth);
+export const marketShareRowsAllMonthly_MS = (stations, scope = "industry") => marketShareRowsAll(stations, "ms", false, undefined, undefined, scope);
+export const marketShareRowsAllMonthly_HSD = (stations, scope = "industry") => marketShareRowsAll(stations, "hsd", false, undefined, undefined, scope);
+export const marketShareRowsAllCumulative_MS = (stations, startMonth, endMonth, scope = "industry") => marketShareRowsAll(stations, "ms", true, startMonth, endMonth, scope);
+export const marketShareRowsAllCumulative_HSD = (stations, startMonth, endMonth, scope = "industry") => marketShareRowsAll(stations, "hsd", true, startMonth, endMonth, scope);
 
 export function buildTradingAreaOutletRows(outlets, totals) {
   return (outlets || []).map((o) => {
