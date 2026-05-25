@@ -420,7 +420,7 @@ function MarketShareTable({ rows, label }) {
             {(!rows || rows.length === 0) ? (
               <tr><td colSpan={9} style={{ padding: 16, color: '#64748B' }}>No data.</td></tr>
             ) : rows.map((r, i) => (
-              <tr key={i} style={{ borderTop: '1px solid #F1F5F9' }}>
+              <tr key={i} style={{ borderTop: '1px solid #F1F5F9', fontWeight: r.isTotal ? 700 : 400, background: r.isTotal ? 'rgba(248,250,252,0.8)' : 'transparent' }}>
                 <td style={{ padding: '8px 6px' }}>{r.company}</td>
                 <td style={{ padding: '8px 6px', fontWeight: 700 }}>{formatRoundedNumber(r.curr)}</td>
                 <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.last)}</td>

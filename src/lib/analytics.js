@@ -215,7 +215,8 @@ function marketShareRowsAll(stations, metric, cumulative, startMonth, endMonth, 
   const by = {};
   let total = 0, total_ly = 0;
   (stations || []).forEach((s) => {
-    const comp = (s.company || "PVT").toString().trim().toUpperCase();
+    const comp = (s.company || "").toString().trim().toUpperCase();
+    if (!comp) return;
     if (scope === "psu" && !PSU_COMPANIES.has(comp)) return;
     const source = cumulative ? cumulativeForOutletRows(s.rows || [], startMonth, endMonth) : s;
     const curr = Number(source[metric] || 0);
@@ -226,7 +227,7 @@ function marketShareRowsAll(stations, metric, cumulative, startMonth, endMonth, 
     total += curr;
     total_ly += last;
   });
-  return Object.values(by).map((r) => {
+  const rows = Object.values(by).map((r) => {
     const growth = r.curr - r.last;
     const growthPct = r.last === 0 ? (r.curr === 0 ? 0 : 100) : (growth / r.last) * 100;
     const share = total ? (r.curr / total) * 100 : 0;
@@ -236,6 +237,21 @@ function marketShareRowsAll(stations, metric, cumulative, startMonth, endMonth, 
     const mop_up = target_curr - r.curr;
     return { company: r.company, curr: r.curr, last: r.last, growth, growthPct, share, share_ly, share_change, mop_up };
   }).sort((a, b) => b.share - a.share);
+
+  rows.push({
+    company: "Total",
+    curr: total,
+    last: total_ly,
+    growth: total - total_ly,
+    growthPct: total_ly === 0 ? (total === 0 ? 0 : 100) : ((total - total_ly) / total_ly) * 100,
+    share: total ? 100 : 0,
+    share_ly: total_ly ? 100 : 0,
+    share_change: 0,
+    mop_up: 0,
+    isTotal: true,
+  });
+
+  return rows;
 }
 
 export const marketShareRowsAllMonthly_MS = (stations, scope = "industry") => marketShareRowsAll(stations, "ms", false, undefined, undefined, scope);
