@@ -749,7 +749,7 @@ function buildInsightsPayload({ latestMonth, stations }) {
 
 /* ---------- main app ---------- */
 export default function FuelMapApp() {
-  const [records, setRecords] = useState(() => loadRecords());
+  const [records, setRecords] = useState([]);
   const [stations, setStations] = useState([]);
   const [iconsMap, setIconsMap] = useState({});
   const [selected, setSelected] = useState(null);
@@ -760,12 +760,6 @@ export default function FuelMapApp() {
   const [animState, setAnimState] = useState({ mode: 'idle', key: 0 });
 // pick latest month from CSV records, falling back to calendar if empty
 const [latestMonth, setLatestMonth] = useState(() => {
-  const recs = loadRecords();
-  if (recs && recs.length > 0) {
-    const months = uniqueSortedMonths(recs);
-    return months[0]; // newest first
-  }
-  // fallback to calendar month if no CSV yet
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 });
@@ -1058,6 +1052,13 @@ function selectSuggestion(sug) {
     setStations(st);
     saveRecords(records);
   }, [records, latestMonth]);
+
+  useEffect(() => {
+    if (!records.length) return;
+    const months = uniqueSortedMonths(records);
+    if (!months.length) return;
+    setLatestMonth((prev) => (months.includes(prev) ? prev : months[0]));
+  }, [records]);
 
   // ✅ NEW EFFECT: keep selected RO pinned but refresh its month-specific values
   useEffect(() => {
