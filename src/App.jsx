@@ -1092,7 +1092,7 @@ function selectSuggestion(sug) {
   useEffect(() => {
     async function initFromPublicCsv() {
       try {
-        const res = await fetch('/stations.csv');
+        const res = await fetch('/stations.csv', { cache: 'no-store' });
         if (!res.ok) return;
         const text = await res.text();
         lastCsvTextRef.current = text;
