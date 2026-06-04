@@ -150,6 +150,32 @@ function normalizeSearchValue(value) {
   return (value || "").toString().trim().toLowerCase();
 }
 
+function canonicalOutletName(value) {
+  return (value || "")
+    .toString()
+    .trim()
+    .toUpperCase()
+    .replace(/^[\s./-]*(MSHSD|MS\/HSD|MS HSD|MS|HSD)\b[\s./-]*/i, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function roundedCoord(value, precision = 4) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return "";
+  return num.toFixed(precision);
+}
+
+function stationDisplayLabel(station, duplicateNameKeys = new Set()) {
+  const name = (station?.name || "").toString().trim();
+  const duplicateKey = canonicalOutletName(name);
+  if (duplicateNameKeys.has(duplicateKey)) {
+    return `${name} · ${station.company} · ${station.trading_area}`;
+  }
+  return name;
+}
+
 // Clean, brand-aligned AI reply
 function AIReply({ text }) {
   // strip common markdown noise quickly
@@ -259,10 +285,15 @@ function dedupeRecords(records = []) {
 }
 
 function stationGroupKey(record) {
-  const name = (record.name || "").toString().trim().toLowerCase();
+  const name = canonicalOutletName(record.name).toLowerCase();
   const company = (record.company || "").toString().trim().toUpperCase();
   const area = (record.trading_area || record.tradingArea || record.area || "").toString().trim().toLowerCase();
-  if (name && company && area) return `${name}::${company}::${area}`;
+  const lat = roundedCoord(record.lat);
+  const lng = roundedCoord(record.lng);
+  if (name && company && area) {
+    if (lat && lng) return `${name}::${company}::${area}::${lat}::${lng}`;
+    return `${name}::${company}::${area}`;
+  }
   return normalizeOutletId(record.outlet_id || record.id, `${name}::${area}`);
 }
 
@@ -997,16 +1028,26 @@ function focusStationOnMap(station, mapRef, setSelected, setTaSelected) {
 
 function resolveSearchMatch(query, stations) {
   const value = normalizeSearchValue(query);
+  const canonicalValue = canonicalOutletName(query).toLowerCase();
   if (!value) return null;
 
   const exactOutlet = stations.find((station) => normalizeSearchValue(station.name) === value);
   if (exactOutlet) return { type: "Outlet", station: exactOutlet };
 
+  const canonicalExactOutlet = stations.find((station) => canonicalOutletName(station.name).toLowerCase() === canonicalValue);
+  if (canonicalExactOutlet) return { type: "Outlet", station: canonicalExactOutlet };
+
   const startsWithOutlet = stations.find((station) => normalizeSearchValue(station.name).startsWith(value));
   if (startsWithOutlet) return { type: "Outlet", station: startsWithOutlet };
 
+  const canonicalStartsWithOutlet = stations.find((station) => canonicalOutletName(station.name).toLowerCase().startsWith(canonicalValue));
+  if (canonicalStartsWithOutlet) return { type: "Outlet", station: canonicalStartsWithOutlet };
+
   const containsOutlet = stations.find((station) => normalizeSearchValue(station.name).includes(value));
   if (containsOutlet) return { type: "Outlet", station: containsOutlet };
+
+  const canonicalContainsOutlet = stations.find((station) => canonicalOutletName(station.name).toLowerCase().includes(canonicalValue));
+  if (canonicalContainsOutlet) return { type: "Outlet", station: canonicalContainsOutlet };
 
   return null;
 }
@@ -1017,11 +1058,27 @@ function updateSuggestions(q) {
   if (!value) { setSuggestions([]); return; }
 
   const ss = [];
+  const duplicateNameKeys = new Set(
+    Object.entries(
+      stations.reduce((acc, station) => {
+        const key = canonicalOutletName(station.name);
+        if (!key) return acc;
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {})
+    )
+      .filter(([, count]) => count > 1)
+      .map(([key]) => key)
+  );
+  const seenOutletKeys = new Set();
   // match by exact/contains on RO name
   for (const s of stations) {
     const name = (s.name || '').toString().toLowerCase();
     if (name.includes(value)) {
-      ss.push(makeSuggestion(s.name, 'Outlet', s.lat, s.lng, s));
+      const outletIdentity = stationGroupKey(s);
+      if (seenOutletKeys.has(outletIdentity)) continue;
+      seenOutletKeys.add(outletIdentity);
+      ss.push(makeSuggestion(stationDisplayLabel(s, duplicateNameKeys), 'Outlet', s.lat, s.lng, s));
       if (ss.length >= 12) break;
     }
   }
