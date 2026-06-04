@@ -547,12 +547,7 @@ function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
                   fontWeight: 700
                 }}>{(r.projectedShareChange >= 0 ? "+" : "") + Number(r.projectedShareChange || 0).toFixed(2)} pp</td>
                 <td style={{ padding: "8px 6px", color: r.confidence === "High" ? "#166534" : r.confidence === "Medium" ? "#92400E" : "#64748B", fontWeight: 700 }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                    <span>{r.confidence}</span>
-                    {r.wasDamped && !r.isTotal ? (
-                      <span style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8" }}>guardrail applied</span>
-                    ) : null}
-                  </div>
+                  {r.confidence}
                 </td>
               </tr>
             ))}
