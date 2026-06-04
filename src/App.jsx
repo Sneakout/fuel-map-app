@@ -155,10 +155,18 @@ function canonicalOutletName(value) {
     .toString()
     .trim()
     .toUpperCase()
-    .replace(/^[\s./-]*(MSHSD|MS\/HSD|MS HSD|MS|HSD)\b[\s./-]*/i, "")
+    .replace(/^[\s./-]*(M\/S|MSHSD|MS\/HSD|MS HSD|MS|HSD)\b[\s./-]*/i, "")
     .replace(/[^A-Z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function canonicalCompanyName(value) {
+  const raw = (value || "").toString().trim().toUpperCase();
+  if (raw === "IOCL") return "IOC";
+  if (raw === "BPCL") return "BPC";
+  if (raw === "HPC") return "HPCL";
+  return raw;
 }
 
 function roundedCoord(value, precision = 4) {
@@ -254,7 +262,7 @@ function normalizeStationRow(r, i = 0) {
     outlet_id: normalizeOutletId(r.outlet_id || r.id, `row-${i}`),
     name: (r.name || r.NAME || "").toString().trim(),
     trading_area: (r.trading_area || r.tradingArea || r.area || "").toString().trim(),
-    company: (r.company || r.brand || "").toString().trim(),
+    company: canonicalCompanyName(r.company || r.brand || ""),
     lat: r.lat,
     lng: r.lng,
     ms: Number(r.ms || 0),
@@ -286,15 +294,12 @@ function dedupeRecords(records = []) {
 
 function stationGroupKey(record) {
   const name = canonicalOutletName(record.name).toLowerCase();
-  const company = (record.company || "").toString().trim().toUpperCase();
-  const area = (record.trading_area || record.tradingArea || record.area || "").toString().trim().toLowerCase();
-  const lat = roundedCoord(record.lat);
-  const lng = roundedCoord(record.lng);
-  if (name && company && area) {
-    if (lat && lng) return `${name}::${company}::${area}::${lat}::${lng}`;
-    return `${name}::${company}::${area}`;
+  const company = canonicalCompanyName(record.company || "");
+  if (name && company) {
+    return `${name}::${company}`;
   }
-  return normalizeOutletId(record.outlet_id || record.id, `${name}::${area}`);
+  const area = (record.trading_area || record.tradingArea || record.area || "").toString().trim().toLowerCase();
+  return normalizeOutletId(record.outlet_id || record.id, `${name}::${company}::${area}`);
 }
 
 function parseStationCsv(text) {
@@ -1029,24 +1034,25 @@ function focusStationOnMap(station, mapRef, setSelected, setTaSelected) {
 function resolveSearchMatch(query, stations) {
   const value = normalizeSearchValue(query);
   const canonicalValue = canonicalOutletName(query).toLowerCase();
+  const searchableStations = stations.filter((station) => station.hasMonthData);
   if (!value) return null;
 
-  const exactOutlet = stations.find((station) => normalizeSearchValue(station.name) === value);
+  const exactOutlet = searchableStations.find((station) => normalizeSearchValue(station.name) === value);
   if (exactOutlet) return { type: "Outlet", station: exactOutlet };
 
-  const canonicalExactOutlet = stations.find((station) => canonicalOutletName(station.name).toLowerCase() === canonicalValue);
+  const canonicalExactOutlet = searchableStations.find((station) => canonicalOutletName(station.name).toLowerCase() === canonicalValue);
   if (canonicalExactOutlet) return { type: "Outlet", station: canonicalExactOutlet };
 
-  const startsWithOutlet = stations.find((station) => normalizeSearchValue(station.name).startsWith(value));
+  const startsWithOutlet = searchableStations.find((station) => normalizeSearchValue(station.name).startsWith(value));
   if (startsWithOutlet) return { type: "Outlet", station: startsWithOutlet };
 
-  const canonicalStartsWithOutlet = stations.find((station) => canonicalOutletName(station.name).toLowerCase().startsWith(canonicalValue));
+  const canonicalStartsWithOutlet = searchableStations.find((station) => canonicalOutletName(station.name).toLowerCase().startsWith(canonicalValue));
   if (canonicalStartsWithOutlet) return { type: "Outlet", station: canonicalStartsWithOutlet };
 
-  const containsOutlet = stations.find((station) => normalizeSearchValue(station.name).includes(value));
+  const containsOutlet = searchableStations.find((station) => normalizeSearchValue(station.name).includes(value));
   if (containsOutlet) return { type: "Outlet", station: containsOutlet };
 
-  const canonicalContainsOutlet = stations.find((station) => canonicalOutletName(station.name).toLowerCase().includes(canonicalValue));
+  const canonicalContainsOutlet = searchableStations.find((station) => canonicalOutletName(station.name).toLowerCase().includes(canonicalValue));
   if (canonicalContainsOutlet) return { type: "Outlet", station: canonicalContainsOutlet };
 
   return null;
@@ -1060,7 +1066,7 @@ function updateSuggestions(q) {
   const ss = [];
   const duplicateNameKeys = new Set(
     Object.entries(
-      stations.reduce((acc, station) => {
+      stations.filter((station) => station.hasMonthData).reduce((acc, station) => {
         const key = canonicalOutletName(station.name);
         if (!key) return acc;
         acc[key] = (acc[key] || 0) + 1;
@@ -1073,6 +1079,7 @@ function updateSuggestions(q) {
   const seenOutletKeys = new Set();
   // match by exact/contains on RO name
   for (const s of stations) {
+    if (!s.hasMonthData) continue;
     const name = (s.name || '').toString().toLowerCase();
     if (name.includes(value)) {
       const outletIdentity = stationGroupKey(s);
@@ -1085,6 +1092,7 @@ function updateSuggestions(q) {
   // if not many matches, include trading area matches
   if (ss.length < 12) {
     for (const s of stations) {
+      if (!s.hasMonthData) continue;
       const area = (s.trading_area || '').toString().toLowerCase();
       if (area && area.includes(value)) {
         // label uses trading area and an example outlet name
@@ -1097,6 +1105,7 @@ function updateSuggestions(q) {
   if (ss.length < 20) {
     const companiesSeen = new Set();
     for (const s of stations) {
+      if (!s.hasMonthData) continue;
       const comp = (s.company || '').toString().toLowerCase();
       if (comp && comp.includes(value) && !companiesSeen.has(comp)) {
         companiesSeen.add(comp);
@@ -1166,6 +1175,7 @@ function selectSuggestion(sug) {
         lat: Number(metaRow.lat) || 0,
         lng: Number(metaRow.lng) || 0,
         month: latestMonth,
+        hasMonthData: Boolean(monthRow),
         ms: Number(monthRow?.ms || 0),
         ms_ly: Number(monthRow?.ms_ly || 0),
         hsd: Number(monthRow?.hsd || 0),
@@ -1273,7 +1283,7 @@ function selectSuggestion(sug) {
 
   function outletsInAreaNorm(normArea) {
     if (!normArea) return [];
-    return stations.filter(s => (s.trading_area_norm || '') === normArea);
+    return stations.filter(s => s.hasMonthData && (s.trading_area_norm || '') === normArea);
   }
 
   function openTradingAreaAnalysis(row, returnPage = pageIndex) {
