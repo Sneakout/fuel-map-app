@@ -988,14 +988,6 @@ function makeSuggestion(label, type, lat = null, lng = null, station = null) {
 function focusStationOnMap(station, mapRef, setSelected, setTaSelected) {
   if (!station) return;
 
-  if (mapRef.current && station.lat && station.lng) {
-    try {
-      mapRef.current.setView([Number(station.lat), Number(station.lng)], 16, { animate: true });
-    } catch (e) {
-      // ignore map centering failures
-    }
-  }
-
   setTaSelected(null);
   setSelected({
     ...station,
@@ -1133,6 +1125,23 @@ function selectSuggestion(sug) {
     if (!months.length) return;
     setLatestMonth((prev) => (months.includes(prev) ? prev : months[0]));
   }, [records]);
+
+  useEffect(() => {
+    if (!selected || !mapRef.current) return;
+    const lat = Number(selected.lat);
+    const lng = Number(selected.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
+    try {
+      mapRef.current.invalidateSize();
+      mapRef.current.flyTo([lat, lng], 16, {
+        animate: true,
+        duration: 0.8,
+      });
+    } catch (e) {
+      // ignore map centering failures
+    }
+  }, [selected]);
 
   // ✅ NEW EFFECT: keep selected RO pinned but refresh its month-specific values
   useEffect(() => {
