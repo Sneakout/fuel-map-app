@@ -352,7 +352,7 @@ function GrowthTable({ rows, label }) {
                 <td style={{ padding: '8px 6px' }}>{r.area}</td>
                 <td style={{ padding: '8px 6px', fontWeight: 700 }}>{formatRoundedNumber(r.thisYear)}</td>
                 <td style={{ padding: '8px 6px' }}>{formatRoundedNumber(r.lastYear)}</td>
-                <td style={{ padding: '8px 6px' }}>{(Number(r.growth) >= 0 ? '+' : '') + formatRoundedNumber(Math.abs(Number(r.growth || 0)))}</td>
+                <td style={{ padding: '8px 6px' }}>{(Number(r.growth) >= 0 ? '+' : '-') + formatRoundedNumber(Math.abs(Number(r.growth || 0)))}</td>
                 <td style={{ padding: '8px 6px' }}>{Number(r.growthPct).toFixed(1)}%</td>
               </tr>
             ))}
@@ -569,6 +569,32 @@ function MarketShareScopeSelector({ value, onChange }) {
   );
 }
 
+function CompanyFilterSelector({ value, onChange, companies }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <label style={{ color: "#64748B", fontSize: 13, fontWeight: 600 }}>Company</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid #E6EEF3",
+          background: "#fff",
+          fontSize: 13,
+        }}
+      >
+        <option value="all">All companies</option>
+        {companies.map((company) => (
+          <option key={company} value={company}>
+            {company}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 
 function DeselectOnMapClick({ onDeselect }) {
   useMapEvents({
@@ -766,6 +792,7 @@ const [latestMonth, setLatestMonth] = useState(() => {
   const [pageIndex, setPageIndex] = useState(0);
   const [iocLossRankBy, setIocLossRankBy] = useState("share");
   const [marketShareScope, setMarketShareScope] = useState("industry");
+  const [growthCompanyFilter, setGrowthCompanyFilter] = useState("all");
   // safe memoized cumulative sums for currently selected RO
 const cumulativeSums = useMemo(() => {
   if (!selected) return null;
@@ -1993,16 +2020,38 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               pageIndex === 4 ? 'Selected Month | Negative Growth' :
                                 'Cumulative (Apr → Selected) | Negative Growth';
 
-            const summaryMS  = summarizeByCompany(rowsMS);
-            const summaryHSD = summarizeByCompany(rowsHSD);
+            const companyOptions = Array.from(
+              new Set(
+                [...rowsMS, ...rowsHSD]
+                  .map((row) => (row.company || "").toString().trim().toUpperCase())
+                  .filter(Boolean)
+              )
+            ).sort();
+
+            const filteredRowsMS = growthCompanyFilter === "all"
+              ? rowsMS
+              : rowsMS.filter((row) => (row.company || "").toString().trim().toUpperCase() === growthCompanyFilter);
+            const filteredRowsHSD = growthCompanyFilter === "all"
+              ? rowsHSD
+              : rowsHSD.filter((row) => (row.company || "").toString().trim().toUpperCase() === growthCompanyFilter);
+
+            const summaryMS  = summarizeByCompany(filteredRowsMS);
+            const summaryHSD = summarizeByCompany(filteredRowsHSD);
 
             return (
               <div style={{ marginTop: 14 }}>
-                <h3 style={{ margin: '0 0 8px 0' }}>{title}</h3>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                  <h3 style={{ margin: 0 }}>{title}</h3>
+                  <CompanyFilterSelector
+                    value={growthCompanyFilter}
+                    onChange={setGrowthCompanyFilter}
+                    companies={companyOptions}
+                  />
+                </div>
                 <SummaryTable rows={summaryMS}  label="MS | Summary by Company" />
-                <GrowthTable  rows={rowsMS}     label="MS | RO-wise" />
+                <GrowthTable  rows={filteredRowsMS}     label="MS | RO-wise" />
                 <SummaryTable rows={summaryHSD} label="HSD | Summary by Company" />
-                <GrowthTable  rows={rowsHSD}    label="HSD | RO-wise" />
+                <GrowthTable  rows={filteredRowsHSD}    label="HSD | RO-wise" />
               </div>
             );
           })()}
