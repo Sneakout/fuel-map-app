@@ -29,7 +29,8 @@ import TradingAreaAnalysisPanel from "./components/TradingAreaAnalysisPanel";
 import { ShareChange } from "./components/analysisShared";
 
 /* ---------- config ---------- */
-const STORAGE_KEY = "fuelmap_records_v4";
+const STORAGE_KEY = "fuelmap_records_v5";
+const LEGACY_STORAGE_KEYS = ["fuelmap_records_v4"];
 
 /* ---------- global styles to ensure full-height map and tooltip layout ---------- */
 
@@ -818,6 +819,14 @@ const [aiMode, setAiMode] = useState(false);
 const [aiInput, setAiInput] = useState("");
 const [chatHistory, setChatHistory] = useState([]); 
 const [aiBusy, setAiBusy] = useState(false);
+
+useEffect(() => {
+  try {
+    LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
+  } catch (e) {
+    console.warn("legacy storage cleanup error", e);
+  }
+}, []);
 
 useEffect(() => {
   if (!isResizing) return undefined;
