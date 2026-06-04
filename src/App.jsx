@@ -254,6 +254,14 @@ function dedupeRecords(records = []) {
   return Array.from(map.values());
 }
 
+function stationGroupKey(record) {
+  const name = (record.name || "").toString().trim().toLowerCase();
+  const company = (record.company || "").toString().trim().toUpperCase();
+  const area = (record.trading_area || record.tradingArea || record.area || "").toString().trim().toLowerCase();
+  if (name && company && area) return `${name}::${company}::${area}`;
+  return normalizeOutletId(record.outlet_id || record.id, `${name}::${area}`);
+}
+
 function parseStationCsv(text) {
   let parsedRows = [];
   Papa.parse(text, {
@@ -1025,7 +1033,7 @@ function selectSuggestion(sug) {
   useEffect(() => {
     const byId = {};
     records.forEach(r => {
-      const id = r.outlet_id || `${r.name}-${r.trading_area}`;
+      const id = stationGroupKey(r);
       if (!byId[id]) byId[id] = [];
       byId[id].push(r);
     });
