@@ -212,17 +212,6 @@ function AIReply({ text }) {
 }
 
 
-function loadRecords() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? dedupeRecords(JSON.parse(raw)) : [];
-  } catch (e) {
-    console.warn("loadRecords error", e);
-    return [];
-  }
-}
-function saveRecords(records) { localStorage.setItem(STORAGE_KEY, JSON.stringify(records)); }
-
 function normalizeOutletId(value, fallback = "") {
   return String(value || fallback || "")
     .replace(/,/g, "")
@@ -822,6 +811,7 @@ const [aiBusy, setAiBusy] = useState(false);
 
 useEffect(() => {
   try {
+    localStorage.removeItem(STORAGE_KEY);
     LEGACY_STORAGE_KEYS.forEach((key) => localStorage.removeItem(key));
   } catch (e) {
     console.warn("legacy storage cleanup error", e);
@@ -1040,26 +1030,26 @@ function selectSuggestion(sug) {
       byId[id].push(r);
     });
     const st = Object.entries(byId).map(([id, rows]) => {
-      const latest = rows.find(x => x.month === latestMonth) || rows[rows.length - 1] || {};
-      const trading_area_raw = (latest.trading_area || latest.tradingArea || latest.area || '').toString().trim();
+      const monthRow = rows.find(x => x.month === latestMonth) || null;
+      const metaRow = monthRow || rows[rows.length - 1] || {};
+      const trading_area_raw = (metaRow.trading_area || metaRow.tradingArea || metaRow.area || '').toString().trim();
       return {
         id,
-        name: latest.name || "",
-        company: (latest.company || "").toString().trim(),
+        name: metaRow.name || "",
+        company: (metaRow.company || "").toString().trim(),
         trading_area: trading_area_raw,
         trading_area_norm: trading_area_raw.toLowerCase(),
-        lat: Number(latest.lat) || 0,
-        lng: Number(latest.lng) || 0,
-        month: latest.month || "",
-        ms: Number(latest.ms || 0),
-        ms_ly: Number(latest.ms_ly || 0),
-        hsd: Number(latest.hsd || 0),
-        hsd_ly: Number(latest.hsd_ly || 0),
+        lat: Number(metaRow.lat) || 0,
+        lng: Number(metaRow.lng) || 0,
+        month: latestMonth,
+        ms: Number(monthRow?.ms || 0),
+        ms_ly: Number(monthRow?.ms_ly || 0),
+        hsd: Number(monthRow?.hsd || 0),
+        hsd_ly: Number(monthRow?.hsd_ly || 0),
         rows
       };
     });
     setStations(st);
-    saveRecords(records);
   }, [records, latestMonth]);
 
   useEffect(() => {
@@ -1108,7 +1098,6 @@ function selectSuggestion(sug) {
         lastCsvTextRef.current = text;
         const rows = parseStationCsv(text);
         setRecords(rows);
-        saveRecords(rows);
       } catch (e) {
         console.warn('Failed to load stations.csv', e);
       }
@@ -1470,7 +1459,6 @@ function AIReplyPro({ text }) {
         const rows = parseStationCsv(text);
         if (!canceled) {
           setRecords(rows);
-          saveRecords(rows);
           lastCsvTextRef.current = text;
         }
       } catch (e) {
