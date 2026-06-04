@@ -53,6 +53,19 @@ export function monthToken(monthStr) {
   return y * 12 + (m - 1);
 }
 
+export function monthFromToken(token) {
+  if (!Number.isFinite(token)) return "";
+  const year = Math.floor(token / 12);
+  const month = (token % 12) + 1;
+  return `${year}-${String(month).padStart(2, "0")}`;
+}
+
+export function nextMonth(monthStr) {
+  const token = monthToken(monthStr);
+  if (!Number.isFinite(token)) return "";
+  return monthFromToken(token + 1);
+}
+
 export function monthInRange(monthStr, startStr, endStr) {
   const t = monthToken(monthStr);
   return t >= monthToken(startStr) && t <= monthToken(endStr);
@@ -258,6 +271,170 @@ export const marketShareRowsAllMonthly_MS = (stations, scope = "industry") => ma
 export const marketShareRowsAllMonthly_HSD = (stations, scope = "industry") => marketShareRowsAll(stations, "hsd", false, undefined, undefined, scope);
 export const marketShareRowsAllCumulative_MS = (stations, startMonth, endMonth, scope = "industry") => marketShareRowsAll(stations, "ms", true, startMonth, endMonth, scope);
 export const marketShareRowsAllCumulative_HSD = (stations, startMonth, endMonth, scope = "industry") => marketShareRowsAll(stations, "hsd", true, startMonth, endMonth, scope);
+
+function weightedAverage(values, weights) {
+  let totalWeight = 0;
+  let total = 0;
+  values.forEach((value, index) => {
+    const weight = Number(weights[index] || 0);
+    const numeric = Number(value);
+    if (!Number.isFinite(numeric) || weight <= 0) return;
+    totalWeight += weight;
+    total += numeric * weight;
+  });
+  return totalWeight > 0 ? total / totalWeight : null;
+}
+
+function recentSeries(rows, metric, latestMonth) {
+  return (rows || [])
+    .map((row) => ({
+      month: (row.month || "").toString().trim(),
+      value: Number(row[metric] || 0),
+    }))
+    .filter((entry) => entry.month && Number.isFinite(entry.value) && monthToken(entry.month) <= monthToken(latestMonth))
+    .sort((a, b) => monthToken(a.month) - monthToken(b.month));
+}
+
+function historyValueForMonth(rows, metric, targetMonth) {
+  const match = (rows || []).find((row) => (row.month || "").toString().trim() === targetMonth);
+  return match ? Number(match[metric] || 0) : null;
+}
+
+function confidenceLabel(score) {
+  if (score >= 0.75) return "High";
+  if (score >= 0.45) return "Medium";
+  return "Low";
+}
+
+export function forecastOutletMetric(station, metric, latestMonth) {
+  const history = recentSeries(station?.rows || [], metric, latestMonth);
+  const current = historyValueForMonth(station?.rows || [], metric, latestMonth) ?? Number(station?.[metric] || 0);
+  const targetMonth = nextMonth(latestMonth);
+  const seasonalMonth = monthFromToken(monthToken(targetMonth) - 12);
+  const recent = history.slice(-3);
+  const recentMomentum = recent.length
+    ? weightedAverage(
+        recent.map((entry) => entry.value),
+        recent.length === 1 ? [1] : recent.length === 2 ? [0.4, 0.6] : [0.2, 0.3, 0.5]
+      )
+    : null;
+  const seasonalValue = historyValueForMonth(station?.rows || [], metric, seasonalMonth);
+  const deltas = [];
+  for (let index = 1; index < recent.length; index += 1) {
+    deltas.push(recent[index].value - recent[index - 1].value);
+  }
+  const averageDelta = deltas.length ? deltas.reduce((sum, value) => sum + value, 0) / deltas.length : 0;
+  const lastValue = recent.length ? recent[recent.length - 1].value : current;
+  const trendProjection = recent.length ? Math.max(0, lastValue + averageDelta) : null;
+
+  const components = [];
+  if (recentMomentum !== null) components.push({ value: recentMomentum, weight: 0.5 });
+  if (seasonalValue !== null) components.push({ value: seasonalValue, weight: 0.35 });
+  if (trendProjection !== null) components.push({ value: trendProjection, weight: 0.15 });
+
+  const fallbackValue = history.length ? history[history.length - 1].value : 0;
+  const projected = components.length
+    ? components.reduce((sum, component) => sum + component.value * component.weight, 0) /
+      components.reduce((sum, component) => sum + component.weight, 0)
+    : fallbackValue;
+
+  const recentSix = history.slice(-6).map((entry) => entry.value);
+  const mean = recentSix.length ? recentSix.reduce((sum, value) => sum + value, 0) / recentSix.length : 0;
+  const variance = recentSix.length
+    ? recentSix.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / recentSix.length
+    : 0;
+  const volatility = mean > 0 ? Math.sqrt(variance) / mean : 1;
+  const historyScore = Math.min(history.length / 12, 1);
+  const seasonalScore = seasonalValue !== null ? 1 : 0;
+  const volatilityScore = recentSix.length < 2 ? 0.4 : Math.max(0, 1 - Math.min(volatility, 1));
+  const score = (historyScore * 0.45) + (seasonalScore * 0.25) + (volatilityScore * 0.3);
+
+  return {
+    current,
+    projected: Math.max(0, projected),
+    growth: Math.max(0, projected) - current,
+    growthPct: current === 0 ? (projected === 0 ? 0 : 100) : ((Math.max(0, projected) - current) / current) * 100,
+    confidence: confidenceLabel(score),
+    confidenceScore: score,
+    inputs: {
+      recentMomentum,
+      seasonalValue,
+      trendProjection,
+      historyMonths: history.length,
+    },
+  };
+}
+
+export function buildProjectionRows(stations, metric, latestMonth, scope = "industry") {
+  const byCompany = {};
+  let totalCurrent = 0;
+  let totalProjected = 0;
+
+  (stations || []).forEach((station) => {
+    const company = (station.company || "").toString().trim().toUpperCase();
+    if (!company) return;
+    if (scope === "psu" && !PSU_COMPANIES.has(company)) return;
+
+    const forecast = forecastOutletMetric(station, metric, latestMonth);
+    if (!byCompany[company]) {
+      byCompany[company] = {
+        company,
+        current: 0,
+        projected: 0,
+        confidenceWeighted: 0,
+        confidenceBase: 0,
+      };
+    }
+    byCompany[company].current += forecast.current;
+    byCompany[company].projected += forecast.projected;
+    const confidenceWeight = Math.max(forecast.projected, forecast.current, 1);
+    byCompany[company].confidenceWeighted += forecast.confidenceScore * confidenceWeight;
+    byCompany[company].confidenceBase += confidenceWeight;
+    totalCurrent += forecast.current;
+    totalProjected += forecast.projected;
+  });
+
+  const rows = Object.values(byCompany)
+    .map((row) => {
+      const projectedGrowth = row.projected - row.current;
+      const projectedGrowthPct = row.current === 0 ? (row.projected === 0 ? 0 : 100) : (projectedGrowth / row.current) * 100;
+      const currentShare = totalCurrent ? (row.current / totalCurrent) * 100 : 0;
+      const projectedShare = totalProjected ? (row.projected / totalProjected) * 100 : 0;
+      const confidenceScore = row.confidenceBase ? row.confidenceWeighted / row.confidenceBase : 0;
+      return {
+        company: row.company,
+        current: row.current,
+        projected: row.projected,
+        projectedGrowth,
+        projectedGrowthPct,
+        currentShare,
+        projectedShare,
+        projectedShareChange: projectedShare - currentShare,
+        confidence: confidenceLabel(confidenceScore),
+        confidenceScore,
+      };
+    })
+    .sort((a, b) => b.projectedShare - a.projectedShare);
+
+  rows.push({
+    company: "Total",
+    current: totalCurrent,
+    projected: totalProjected,
+    projectedGrowth: totalProjected - totalCurrent,
+    projectedGrowthPct: totalCurrent === 0 ? (totalProjected === 0 ? 0 : 100) : ((totalProjected - totalCurrent) / totalCurrent) * 100,
+    currentShare: totalCurrent ? 100 : 0,
+    projectedShare: totalProjected ? 100 : 0,
+    projectedShareChange: 0,
+    confidence: "—",
+    confidenceScore: 0,
+    isTotal: true,
+  });
+
+  return {
+    rows,
+    targetMonth: nextMonth(latestMonth),
+  };
+}
 
 export function buildTradingAreaOutletRows(outlets, totals) {
   return (outlets || []).map((o) => {

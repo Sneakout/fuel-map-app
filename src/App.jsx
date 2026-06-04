@@ -6,6 +6,7 @@ import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
   TA_METRIC_ORDER,
+  buildProjectionRows,
   buildCumulativeGrowthRowsHSD,
   buildCumulativeGrowthRowsMS,
   buildIOCLossTradingAreaRows,
@@ -20,6 +21,7 @@ import {
   marketShareRowsAllCumulative_MS,
   marketShareRowsAllMonthly_HSD,
   marketShareRowsAllMonthly_MS,
+  nextMonth,
   sortRowsByGrowth,
   summarizeByCompany,
   uniqueSortedMonths,
@@ -493,6 +495,85 @@ function MarketShareTable({ rows, label }) {
           </tbody>
         </table>
       </div>
+    </div>
+  );
+}
+
+function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <h4 style={{ margin: "0 0 6px 0" }}>{label}</h4>
+      <div style={{ background: "#fff", borderRadius: 8, padding: 12, boxShadow: "0 1px 2px rgba(2,6,23,0.04)" }}>
+        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+          <thead style={{ color: "#94A3B8", textAlign: "left" }}>
+            <tr>
+              <th style={{ padding: "8px 6px" }}>Company</th>
+              <th style={{ padding: "8px 6px" }}>{formatMonth(currentMonth)} sales</th>
+              <th style={{ padding: "8px 6px" }}>{formatMonth(targetMonth)} projected sales</th>
+              <th style={{ padding: "8px 6px" }}>Projected growth</th>
+              <th style={{ padding: "8px 6px" }}>Projected growth %</th>
+              <th style={{ padding: "8px 6px" }}>Current share</th>
+              <th style={{ padding: "8px 6px" }}>Projected share</th>
+              <th style={{ padding: "8px 6px" }}>Projected change</th>
+              <th style={{ padding: "8px 6px" }}>Confidence</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(!rows || rows.length === 0) ? (
+              <tr><td colSpan={9} style={{ padding: 16, color: "#64748B" }}>No projection data.</td></tr>
+            ) : rows.map((r, index) => (
+              <tr key={index} style={{ borderTop: "1px solid #F1F5F9", fontWeight: r.isTotal ? 700 : 400, background: r.isTotal ? "rgba(248,250,252,0.8)" : "transparent" }}>
+                <td style={{ padding: "8px 6px" }}>{r.company}</td>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{formatRoundedNumber(r.current)}</td>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{formatRoundedNumber(r.projected)}</td>
+                <td style={{
+                  padding: "8px 6px",
+                  background: (r.projectedGrowth || 0) >= 0 ? "#ECFDF5" : "#FEF2F2",
+                  color: (r.projectedGrowth || 0) >= 0 ? "#064E3B" : "#7F1D1D",
+                  fontWeight: 700
+                }}>{(r.projectedGrowth >= 0 ? "+" : "-") + formatRoundedNumber(Math.abs(Number(r.projectedGrowth || 0)))}</td>
+                <td style={{
+                  padding: "8px 6px",
+                  background: (r.projectedGrowthPct || 0) >= 0 ? "#ECFDF5" : "#FEF2F2",
+                  color: (r.projectedGrowthPct || 0) >= 0 ? "#064E3B" : "#7F1D1D",
+                  fontWeight: 700
+                }}>{Number(r.projectedGrowthPct || 0).toFixed(1)}%</td>
+                <td style={{ padding: "8px 6px" }}>{Number(r.currentShare || 0).toFixed(2)}%</td>
+                <td style={{ padding: "8px 6px" }}>{Number(r.projectedShare || 0).toFixed(2)}%</td>
+                <td style={{
+                  padding: "8px 6px",
+                  background: (r.projectedShareChange || 0) >= 0 ? "#ECFDF5" : "#FEE2E2",
+                  color: (r.projectedShareChange || 0) >= 0 ? "#064E3B" : "#7F1D1D",
+                  fontWeight: 700
+                }}>{(r.projectedShareChange >= 0 ? "+" : "") + Number(r.projectedShareChange || 0).toFixed(2)} pp</td>
+                <td style={{ padding: "8px 6px", color: r.confidence === "High" ? "#166534" : r.confidence === "Medium" ? "#92400E" : "#64748B", fontWeight: 700 }}>
+                  {r.confidence}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ProjectionMethodologyNote({ latestMonth, targetMonth }) {
+  return (
+    <div style={{
+      marginTop: 14,
+      background: "#F8FAFC",
+      border: "1px solid #E6EEF3",
+      borderRadius: 10,
+      padding: 12,
+      color: "#475569",
+      fontSize: 13,
+      lineHeight: 1.5,
+    }}>
+      Projection for <strong>{formatMonth(targetMonth)}</strong> is estimated outlet by outlet using three signals: the latest three-month run-rate,
+      the same month last year when available, and the recent month-on-month trend. Those signals are blended with normalized weights so missing
+      history does not distort the result. Company sales and market share are then computed by summing the projected outlet sales. Confidence reflects
+      how much history exists for that outlet set and how stable the recent sales pattern has been through <strong>{formatMonth(latestMonth)}</strong>.
     </div>
   );
 }
@@ -2069,9 +2150,16 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FCE7F3', cursor:'pointer' }}
           >IOC losing TA Cumulative</button>
 
+          <button
+            onClick={() => setPageIndex(10)}
+            title="Next month sales and market share projection"
+            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#EDE9FE', cursor:'pointer' }}
+          >Projection</button>
+
           {/* Growth/MarketShare pages when no RO is selected */}
           {pageIndex >= 2 && (() => {
             const startMonth = fiscalYearStartMonth(latestMonth);
+            const projectionMonth = nextMonth(latestMonth);
 
             // Build data for Growth pages
             const monthlyMS  = buildMonthlyGrowthRowsMS(stations);
@@ -2084,6 +2172,8 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const hsdMonthly = marketShareRowsAllMonthly_HSD(stations, marketShareScope);
             const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth, marketShareScope);
             const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth, marketShareScope);
+            const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope);
+            const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope);
 
             // Decide which page to show
             if (pageIndex === 6) {
@@ -2139,6 +2229,29 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   </div>
                   <TradingAreaLossTable rows={losingCumMS} label={`MS | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
                   <TradingAreaLossTable rows={losingCumHSD} label={`HSD | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
+                </div>
+              );
+            }
+            if (pageIndex === 10) {
+              return (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                    <h3 style={{ margin: 0 }}>Projection | {formatMonth(projectionMonth)}</h3>
+                    <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
+                  </div>
+                  <ProjectionTable
+                    rows={msProjection.rows}
+                    currentMonth={latestMonth}
+                    targetMonth={msProjection.targetMonth}
+                    label={`MS | Projected Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`}
+                  />
+                  <ProjectionTable
+                    rows={hsdProjection.rows}
+                    currentMonth={latestMonth}
+                    targetMonth={hsdProjection.targetMonth}
+                    label={`HSD | Projected Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`}
+                  />
+                  <ProjectionMethodologyNote latestMonth={latestMonth} targetMonth={projectionMonth} />
                 </div>
               );
             }
