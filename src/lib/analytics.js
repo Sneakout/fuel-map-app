@@ -376,16 +376,19 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
     if (scope === "psu" && !PSU_COMPANIES.has(company)) return;
 
     const forecast = forecastOutletMetric(station, metric, latestMonth);
+    const lastYear = Number(station?.[`${metric}_ly`] || 0);
     if (!byCompany[company]) {
       byCompany[company] = {
         company,
         current: 0,
+        last: 0,
         projected: 0,
         confidenceWeighted: 0,
         confidenceBase: 0,
       };
     }
     byCompany[company].current += forecast.current;
+    byCompany[company].last += lastYear;
     byCompany[company].projected += forecast.projected;
     const confidenceWeight = Math.max(forecast.projected, forecast.current, 1);
     byCompany[company].confidenceWeighted += forecast.confidenceScore * confidenceWeight;
@@ -394,24 +397,71 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
     totalProjected += forecast.projected;
   });
 
-  const rows = Object.values(byCompany)
+  const rawRows = Object.values(byCompany).map((row) => {
+    const projectedGrowth = row.projected - row.current;
+    const projectedGrowthPct = row.current === 0 ? (row.projected === 0 ? 0 : 100) : (projectedGrowth / row.current) * 100;
+    const currentShare = totalCurrent ? (row.current / totalCurrent) * 100 : 0;
+    const rawProjectedShare = totalProjected ? (row.projected / totalProjected) * 100 : 0;
+    const confidenceScore = row.confidenceBase ? row.confidenceWeighted / row.confidenceBase : 0;
+    const currentYoYGrowthPct = row.last === 0 ? (row.current === 0 ? 0 : 100) : ((row.current - row.last) / row.last) * 100;
+
+    let shareCap = confidenceScore >= 0.85 ? 2.5 : confidenceScore >= 0.7 ? 2 : 1.5;
+    if (currentYoYGrowthPct < 0) shareCap = Math.min(shareCap, 1.5);
+    const rawShareChange = rawProjectedShare - currentShare;
+    const trendGap = projectedGrowthPct - currentYoYGrowthPct;
+
+    const shareAlpha = Math.abs(rawShareChange) > shareCap ? shareCap / Math.abs(rawShareChange) : 1;
+    const trendAlpha = trendGap > 12 ? Math.max(0.45, 12 / trendGap) : 1;
+    const damping = Math.min(shareAlpha, trendAlpha);
+    const adjustedProjected = row.current + ((row.projected - row.current) * damping);
+
+    let confidencePenalty = 0;
+    if (Math.abs(rawShareChange) > 2) confidencePenalty += 0.22;
+    if (trendGap > 12) confidencePenalty += 0.22;
+    if (damping < 0.8) confidencePenalty += 0.12;
+    if (damping < 0.65) confidencePenalty += 0.08;
+    const adjustedConfidenceScore = Math.max(0, confidenceScore - confidencePenalty);
+
+    return {
+      company: row.company,
+      current: row.current,
+      last: row.last,
+      rawProjected: row.projected,
+      projected: adjustedProjected,
+      currentShare,
+      rawProjectedShare,
+      rawShareChange,
+      currentYoYGrowthPct,
+      confidenceScore: adjustedConfidenceScore,
+      confidencePenalty,
+      damping,
+    };
+  });
+
+  const adjustedTotalProjected = rawRows.reduce((sum, row) => sum + row.projected, 0);
+  const preserveTotalScale = adjustedTotalProjected > 0 ? totalProjected / adjustedTotalProjected : 1;
+
+  const rows = rawRows
     .map((row) => {
-      const projectedGrowth = row.projected - row.current;
-      const projectedGrowthPct = row.current === 0 ? (row.projected === 0 ? 0 : 100) : (projectedGrowth / row.current) * 100;
-      const currentShare = totalCurrent ? (row.current / totalCurrent) * 100 : 0;
-      const projectedShare = totalProjected ? (row.projected / totalProjected) * 100 : 0;
-      const confidenceScore = row.confidenceBase ? row.confidenceWeighted / row.confidenceBase : 0;
+      const projected = row.projected * preserveTotalScale;
+      const projectedGrowth = projected - row.current;
+      const projectedGrowthPct = row.current === 0 ? (projected === 0 ? 0 : 100) : (projectedGrowth / row.current) * 100;
+      const projectedShare = totalProjected ? (projected / totalProjected) * 100 : 0;
       return {
         company: row.company,
         current: row.current,
-        projected: row.projected,
+        last: row.last,
+        projected,
+        rawProjected: row.rawProjected,
         projectedGrowth,
         projectedGrowthPct,
-        currentShare,
+        currentShare: row.currentShare,
         projectedShare,
-        projectedShareChange: projectedShare - currentShare,
-        confidence: confidenceLabel(confidenceScore),
-        confidenceScore,
+        projectedShareChange: projectedShare - row.currentShare,
+        currentYoYGrowthPct: row.currentYoYGrowthPct,
+        confidence: confidenceLabel(row.confidenceScore),
+        confidenceScore: row.confidenceScore,
+        wasDamped: row.damping < 0.999,
       };
     })
     .sort((a, b) => b.projectedShare - a.projectedShare);
@@ -425,6 +475,7 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
     currentShare: totalCurrent ? 100 : 0,
     projectedShare: totalProjected ? 100 : 0,
     projectedShareChange: 0,
+    currentYoYGrowthPct: 0,
     confidence: "—",
     confidenceScore: 0,
     isTotal: true,

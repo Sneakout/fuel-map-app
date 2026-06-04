@@ -547,7 +547,12 @@ function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
                   fontWeight: 700
                 }}>{(r.projectedShareChange >= 0 ? "+" : "") + Number(r.projectedShareChange || 0).toFixed(2)} pp</td>
                 <td style={{ padding: "8px 6px", color: r.confidence === "High" ? "#166534" : r.confidence === "Medium" ? "#92400E" : "#64748B", fontWeight: 700 }}>
-                  {r.confidence}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <span>{r.confidence}</span>
+                    {r.wasDamped && !r.isTotal ? (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#94A3B8" }}>guardrail applied</span>
+                    ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -572,8 +577,10 @@ function ProjectionMethodologyNote({ latestMonth, targetMonth }) {
     }}>
       Projection for <strong>{formatMonth(targetMonth)}</strong> is estimated outlet by outlet using three signals: the latest three-month run-rate,
       the same month last year when available, and the recent month-on-month trend. Those signals are blended with normalized weights so missing
-      history does not distort the result. Company sales and market share are then computed by summing the projected outlet sales. Confidence reflects
-      how much history exists for that outlet set and how stable the recent sales pattern has been through <strong>{formatMonth(latestMonth)}</strong>.
+      history does not distort the result. Company sales and market share are then computed by summing the projected outlet sales. If a company's
+      projected one-month market share move is unusually large or outruns its current aggregate trend, the forecast is automatically damped and the
+      confidence is reduced. Confidence reflects how much history exists for that outlet set and how stable the recent sales pattern has been through
+      <strong> {formatMonth(latestMonth)}</strong>.
     </div>
   );
 }
