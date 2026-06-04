@@ -146,6 +146,10 @@ function outletKeyForRow(r) {
   return `${name}::${latr}::${lngr}`;
 }
 
+function normalizeSearchValue(value) {
+  return (value || "").toString().trim().toLowerCase();
+}
+
 // Clean, brand-aligned AI reply
 function AIReply({ text }) {
   // strip common markdown noise quickly
@@ -981,9 +985,43 @@ function makeSuggestion(label, type, lat = null, lng = null, station = null) {
   return { label, type, lat, lng, station };
 }
 
+function focusStationOnMap(station, mapRef, setSelected, setTaSelected) {
+  if (!station) return;
+
+  if (mapRef.current && station.lat && station.lng) {
+    try {
+      mapRef.current.setView([Number(station.lat), Number(station.lng)], 16, { animate: true });
+    } catch (e) {
+      // ignore map centering failures
+    }
+  }
+
+  setTaSelected(null);
+  setSelected({
+    ...station,
+    trading_area_norm: station.trading_area_norm || (station.trading_area || "").toLowerCase(),
+  });
+}
+
+function resolveSearchMatch(query, stations) {
+  const value = normalizeSearchValue(query);
+  if (!value) return null;
+
+  const exactOutlet = stations.find((station) => normalizeSearchValue(station.name) === value);
+  if (exactOutlet) return { type: "Outlet", station: exactOutlet };
+
+  const startsWithOutlet = stations.find((station) => normalizeSearchValue(station.name).startsWith(value));
+  if (startsWithOutlet) return { type: "Outlet", station: startsWithOutlet };
+
+  const containsOutlet = stations.find((station) => normalizeSearchValue(station.name).includes(value));
+  if (containsOutlet) return { type: "Outlet", station: containsOutlet };
+
+  return null;
+}
+
 // fuzzy search function — simple substring match (case-insensitive)
 function updateSuggestions(q) {
-  const value = (q || '').toString().trim().toLowerCase();
+  const value = normalizeSearchValue(q);
   if (!value) { setSuggestions([]); return; }
 
   const ss = [];
@@ -1026,17 +1064,20 @@ function selectSuggestion(sug) {
   setSearchQuery(sug.label);
   setSuggestions([]);
 
-  // center map
-  if (mapRef.current && sug.lat && sug.lng) {
-    try {
-      // performance: use a tighter zoom for outlets
-      const zoom = sug.type === 'Outlet' ? 16 : 14;
-      mapRef.current.setView([Number(sug.lat), Number(sug.lng)], zoom, { animate: true });
-    } catch (e) { /* ignore */ }
-  }
-
   // if we have a station object (exact outlet), pre-select it
   if (sug.station) {
+    if (sug.type === "Outlet") {
+      focusStationOnMap(sug.station, mapRef, setSelected, setTaSelected);
+      return;
+    }
+
+    if (mapRef.current && sug.lat && sug.lng) {
+      try {
+        const zoom = sug.type === 'Outlet' ? 16 : 14;
+        mapRef.current.setView([Number(sug.lat), Number(sug.lng)], zoom, { animate: true });
+      } catch (e) { /* ignore */ }
+    }
+
     setTaSelected(null);
     setSelected(prev => ({
       ...sug.station,
@@ -1045,9 +1086,8 @@ function selectSuggestion(sug) {
   } else if (sug.type === 'Trading area') {
     // if only area, pick first station in that area and select
     const pick = stations.find(st => (st.trading_area || '').toLowerCase() === (sug.label.split(' · ')[0] || '').toLowerCase());
-    if (pick) {
-      setTaSelected(null);
-      setSelected(prev => ({ ...pick, trading_area_norm: pick.trading_area_norm || (pick.trading_area || '').toLowerCase() }));
+      if (pick) {
+      focusStationOnMap(pick, mapRef, setSelected, setTaSelected);
     }
   }
 }
@@ -1550,6 +1590,12 @@ onMouseLeave={e => {
         }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
+            const directMatch = resolveSearchMatch(searchQuery, stations);
+            if (directMatch?.station) {
+              focusStationOnMap(directMatch.station, mapRef, setSelected, setTaSelected);
+              setSuggestions([]);
+              return;
+            }
             if (suggestions.length > 0) selectSuggestion(suggestions[0]);
           } else if (e.key === 'Escape') {
             setSearchQuery('');
@@ -1618,8 +1664,31 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
       const isInSelectedArea =
         selected && st.trading_area_norm === selected.trading_area_norm;
+      const isSelectedOutlet =
+        selected && outletKeyForRow(st) === outletKeyForRow(selected);
 
-      const icon = isInSelectedArea
+      const icon = isSelectedOutlet
+        ? L.divIcon({
+            html: `<div style="
+                position: relative;
+                width: 52px; height: 52px;
+                display: flex; align-items: center; justify-content: center;
+              ">
+                <div style="
+                  position: absolute; width: 52px; height: 52px;
+                  border-radius: 50%;
+                  background: rgba(14,165,233,0.24);
+                  box-shadow: 0 0 0 4px rgba(14,165,233,0.18), 0 0 18px rgba(14,165,233,0.65);
+                  animation: pulseGlow 1.4s infinite;
+                "></div>
+                <img src="/logos/${cmp}.svg" style="width: 38px; height: 38px;" />
+              </div>`,
+            className: "",
+            iconSize: [52, 52],
+            iconAnchor: [26, 52],
+            popupAnchor: [0, -52],
+          })
+        : isInSelectedArea
         ? L.divIcon({
             html: `<div style="
                 position: relative;
