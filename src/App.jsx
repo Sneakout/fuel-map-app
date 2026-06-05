@@ -580,6 +580,15 @@ function ProjectionMethodologyNote({ latestMonth, targetMonth }) {
   );
 }
 
+function PageContextLine({ children }) {
+  if (!children) return null;
+  return (
+    <div style={{ color: "#64748B", fontSize: 13, marginBottom: 8 }}>
+      {children}
+    </div>
+  );
+}
+
 function TradingAreaLossTable({ rows, label, onAreaSelect }) {
   return (
     <div style={{ marginTop: 10 }}>
@@ -2182,11 +2191,12 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ margin: 0 }}>Market share | Selected Month</h3>
+                    <h3 style={{ margin: 0 }}>Market Share</h3>
                     <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
                   </div>
-                  <MarketShareTable rows={msMonthly}  label={`MS | Company-wise Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
-                  <MarketShareTable rows={hsdMonthly} label={`HSD | Company-wise Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
+                  <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • ${formatMonth(latestMonth)}`}</PageContextLine>
+                  <MarketShareTable rows={msMonthly}  label="MS by Company" />
+                  <MarketShareTable rows={hsdMonthly} label="HSD by Company" />
                 </div>
               );
             }
@@ -2194,13 +2204,12 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ margin: 0 }}>
-                      Cumulative Market share | Apr → {formatMonth(latestMonth)}
-                    </h3>
+                    <h3 style={{ margin: 0 }}>Cumulative Market Share</h3>
                     <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
                   </div>
-                  <MarketShareTable rows={msCum}  label={`MS | Company Market Share (Cumulative ${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
-                  <MarketShareTable rows={hsdCum} label={`HSD | Company Market Share (Cumulative ${marketShareScope === "psu" ? "PSU" : "Industry"})`} />
+                  <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • Apr to ${formatMonth(latestMonth)}`}</PageContextLine>
+                  <MarketShareTable rows={msCum}  label="MS by Company" />
+                  <MarketShareTable rows={hsdCum} label="HSD by Company" />
                 </div>
               );
             }
@@ -2210,11 +2219,12 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ margin: 0 }}>Highest losing trading area | IOC | Selected Month</h3>
+                    <h3 style={{ margin: 0 }}>IOC Losing Trading Areas</h3>
                     <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
                   </div>
-                  <TradingAreaLossTable rows={losingMonthMS} label={`MS | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
-                  <TradingAreaLossTable rows={losingMonthHSD} label={`HSD | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
+                  <PageContextLine>{`${formatMonth(latestMonth)} • Ranked by ${iocLossRankBy === "volume" ? "volume loss" : "market share loss"}`}</PageContextLine>
+                  <TradingAreaLossTable rows={losingMonthMS} label="MS" onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
+                  <TradingAreaLossTable rows={losingMonthHSD} label="HSD" onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
                 </div>
               );
             }
@@ -2224,13 +2234,12 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ margin: 0 }}>
-                      Highest losing trading area | IOC | Cumulative Apr → {formatMonth(latestMonth)}
-                    </h3>
+                    <h3 style={{ margin: 0 }}>IOC Losing Trading Areas</h3>
                     <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
                   </div>
-                  <TradingAreaLossTable rows={losingCumMS} label={`MS | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
-                  <TradingAreaLossTable rows={losingCumHSD} label={`HSD | Top 10 IOC losing trading areas by ${iocLossRankBy === "volume" ? "volume" : "market share"}`} onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
+                  <PageContextLine>{`Apr to ${formatMonth(latestMonth)} • Ranked by ${iocLossRankBy === "volume" ? "volume loss" : "market share loss"}`}</PageContextLine>
+                  <TradingAreaLossTable rows={losingCumMS} label="MS" onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
+                  <TradingAreaLossTable rows={losingCumHSD} label="HSD" onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
                 </div>
               );
             }
@@ -2238,20 +2247,21 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                    <h3 style={{ margin: 0 }}>Projection | {formatMonth(projectionMonth)}</h3>
+                    <h3 style={{ margin: 0 }}>Projection</h3>
                     <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
                   </div>
+                  <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • ${formatMonth(projectionMonth)}`}</PageContextLine>
                   <ProjectionTable
                     rows={msProjection.rows}
                     currentMonth={latestMonth}
                     targetMonth={msProjection.targetMonth}
-                    label={`MS | Projected Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`}
+                    label="MS Projection"
                   />
                   <ProjectionTable
                     rows={hsdProjection.rows}
                     currentMonth={latestMonth}
                     targetMonth={hsdProjection.targetMonth}
-                    label={`HSD | Projected Market Share (${marketShareScope === "psu" ? "PSU" : "Industry"})`}
+                    label="HSD Projection"
                   />
                   <ProjectionMethodologyNote latestMonth={latestMonth} targetMonth={projectionMonth} />
                 </div>
@@ -2275,10 +2285,12 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             }
 
             const title =
-              pageIndex === 2 ? 'Selected Month | Positive Growth' :
-              pageIndex === 3 ? 'Cumulative (Apr → Selected) | Positive Growth' :
-              pageIndex === 4 ? 'Selected Month | Negative Growth' :
-                                'Cumulative (Apr → Selected) | Negative Growth';
+              pageIndex === 2 || pageIndex === 3 ? "Growing Outlets" : "Losing Outlets";
+            const context =
+              pageIndex === 2 ? formatMonth(latestMonth) :
+              pageIndex === 3 ? `Apr to ${formatMonth(latestMonth)}` :
+              pageIndex === 4 ? formatMonth(latestMonth) :
+                                `Apr to ${formatMonth(latestMonth)}`;
 
             const companyOptions = Array.from(
               new Set(
@@ -2308,10 +2320,11 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                     companies={companyOptions}
                   />
                 </div>
-                <SummaryTable rows={summaryMS}  label="MS | Summary by Company" />
-                <GrowthTable  rows={filteredRowsMS}     label="MS | RO-wise" />
-                <SummaryTable rows={summaryHSD} label="HSD | Summary by Company" />
-                <GrowthTable  rows={filteredRowsHSD}    label="HSD | RO-wise" />
+                <PageContextLine>{context}</PageContextLine>
+                <SummaryTable rows={summaryMS}  label="MS Summary" />
+                <GrowthTable  rows={filteredRowsMS}     label="MS Outlets" />
+                <SummaryTable rows={summaryHSD} label="HSD Summary" />
+                <GrowthTable  rows={filteredRowsHSD}    label="HSD Outlets" />
               </div>
             );
           })()}

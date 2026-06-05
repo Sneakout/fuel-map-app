@@ -206,7 +206,7 @@ export default function TradingAreaAnalysisPanel({
 
           <TradingAreaPerformanceTable
             rows={outletRows}
-            label={`Trading Area - Outlets | ${metricLabel} ${isCumulative ? `(${cumulativeRangeLabel})` : "(Month)"}`}
+            label={`${metricLabel} Outlets${isCumulative ? ` • ${cumulativeRangeLabel}` : ""}`}
             firstColumnLabel="Outlet"
             includeCompany
             metric={activeMetric}
@@ -214,7 +214,7 @@ export default function TradingAreaAnalysisPanel({
 
           <TradingAreaPerformanceTable
             rows={companyMergedRows}
-            label={`Trading Area - Company | ${metricLabel}`}
+            label={`${metricLabel} by Company`}
             firstColumnLabel="Company"
             metric={activeMetric}
           />
