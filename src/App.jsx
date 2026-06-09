@@ -24,6 +24,7 @@ import {
   nextMonth,
   sortRowsByGrowth,
   summarizeByCompany,
+  uniqueSortedActualMonths,
   uniqueSortedMonths,
 } from "./lib/analytics";
 import OutletAnalysisPanel from "./components/OutletAnalysisPanel";
@@ -259,6 +260,8 @@ function normalizeOutletId(value, fallback = "") {
 }
 
 function normalizeStationRow(r, i = 0) {
+  const msRaw = (r.ms ?? "").toString().trim();
+  const hsdRaw = (r.hsd ?? "").toString().trim();
   return {
     month: (r.month || r.MONTH || "").toString().trim(),
     outlet_id: normalizeOutletId(r.outlet_id || r.id, `row-${i}`),
@@ -267,6 +270,7 @@ function normalizeStationRow(r, i = 0) {
     company: canonicalCompanyName(r.company || r.brand || ""),
     lat: r.lat,
     lng: r.lng,
+    hasCurrentValue: msRaw !== "" || hsdRaw !== "",
     ms: Number(r.ms || 0),
     ms_ly: Number(r.ms_ly || 0),
     hsd: Number(r.hsd || 0),
@@ -375,7 +379,7 @@ function PercentBadge({ value }) {
 }
 
 function MonthSelector({ records, value, onChange }) {
-  const months = uniqueSortedMonths(records);
+  const months = uniqueSortedActualMonths(records);
   if (!months.length) return null;
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -601,6 +605,11 @@ function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
 }
 
 function ProjectionMethodologyNote({ latestMonth, targetMonth }) {
+  const [targetYearRaw] = (targetMonth || "").split("-");
+  const targetYear = Number(targetYearRaw);
+  const targetMonthLastYearLabel = targetYear
+    ? `${formatMonth(targetMonth).replace(/\s+\d{4}$/, "")} ${targetYear - 1}`
+    : "the same month last year";
   return (
     <div style={{
       marginTop: 14,
@@ -612,9 +621,10 @@ function ProjectionMethodologyNote({ latestMonth, targetMonth }) {
       fontSize: 13,
       lineHeight: 1.5,
     }}>
-      Projection for <strong>{formatMonth(targetMonth)}</strong> is estimated outlet by outlet using three signals: the latest three-month run-rate,
-      the same month last year when available, and the recent month-on-month trend. Those signals are blended with normalized weights so missing
-      history does not distort the result. Company sales and market share are then computed by summing the projected outlet sales. If a company's
+      Projection for <strong>{formatMonth(targetMonth)}</strong> is estimated outlet by outlet using the target month last year as the seasonal base,
+      then adjusted using the latest actual trend through <strong>{formatMonth(latestMonth)}</strong>, outlet-level year-on-year movement, and company-level
+      momentum. That makes the forecast anchor to actual <strong>{targetMonthLastYearLabel}</strong> sales where available instead of extrapolating
+      only from recent months. Company sales and market share are then computed by summing the projected outlet sales. If a company's
       projected one-month market share move is unusually large or outruns its current aggregate trend, the forecast is automatically damped and the
       confidence is reduced. Confidence reflects how much history exists for that outlet set and how stable the recent sales pattern has been through
       <strong> {formatMonth(latestMonth)}</strong>.
@@ -1322,7 +1332,7 @@ function selectSuggestion(sug) {
 
   useEffect(() => {
     if (!records.length) return;
-    const months = uniqueSortedMonths(records);
+    const months = uniqueSortedActualMonths(records);
     if (!months.length) return;
     setLatestMonth((prev) => (months.includes(prev) ? prev : months[0]));
   }, [records]);
@@ -2225,8 +2235,8 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const hsdMonthly = marketShareRowsAllMonthly_HSD(stations, marketShareScope);
             const msCum      = marketShareRowsAllCumulative_MS(stations, startMonth, latestMonth, marketShareScope);
             const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth, marketShareScope);
-            const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope);
-            const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope);
+            const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope, projectionMonth);
+            const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope, projectionMonth);
 
             // Decide which page to show
             if (pageIndex === 6) {
@@ -2292,7 +2302,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                     <h3 style={{ margin: 0 }}>Projection</h3>
                     <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
                   </div>
-                  <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • ${formatMonth(projectionMonth)}`}</PageContextLine>
+                  <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • ${formatMonth(projectionMonth)} forecast from ${formatMonth(latestMonth)} actuals`}</PageContextLine>
                   <ProjectionTable
                     rows={msProjection.rows}
                     currentMonth={latestMonth}
