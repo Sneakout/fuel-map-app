@@ -304,6 +304,48 @@ function stationGroupKey(record) {
   return normalizeOutletId(record.outlet_id || record.id, `${name}::${company}::${area}`);
 }
 
+function findBestSelectedStationMatch(selected, stations = []) {
+  if (!selected || !Array.isArray(stations) || stations.length === 0) return null;
+
+  const monthStations = stations.filter((station) => station.hasMonthData);
+  if (!monthStations.length) return null;
+
+  const selectedOutletKey = outletKeyForRow(selected);
+  const exactOutlet = monthStations.find((station) => outletKeyForRow(station) === selectedOutletKey);
+  if (exactOutlet) return exactOutlet;
+
+  const selectedGroupKey = stationGroupKey(selected);
+  const exactGroup = monthStations.find((station) => stationGroupKey(station) === selectedGroupKey);
+  if (exactGroup) return exactGroup;
+
+  const canonicalName = canonicalOutletName(selected.name).toLowerCase();
+  const company = canonicalCompanyName(selected.company || "");
+  const canonicalNameMatch = monthStations.find((station) =>
+    canonicalCompanyName(station.company || "") === company &&
+    canonicalOutletName(station.name).toLowerCase() === canonicalName
+  );
+  if (canonicalNameMatch) return canonicalNameMatch;
+
+  const areaNorm = (selected.trading_area_norm || (selected.trading_area || "").toLowerCase()).toString();
+  const lat = roundedCoord(selected.lat);
+  const lng = roundedCoord(selected.lng);
+  const coordMatch = monthStations.find((station) =>
+    canonicalCompanyName(station.company || "") === company &&
+    (station.trading_area_norm || "").toString() === areaNorm &&
+    roundedCoord(station.lat) === lat &&
+    roundedCoord(station.lng) === lng
+  );
+  if (coordMatch) return coordMatch;
+
+  const sameCompanyArea = monthStations.filter((station) =>
+    canonicalCompanyName(station.company || "") === company &&
+    (station.trading_area_norm || "").toString() === areaNorm
+  );
+  if (sameCompanyArea.length === 1) return sameCompanyArea[0];
+
+  return null;
+}
+
 function parseStationCsv(text) {
   let parsedRows = [];
   Papa.parse(text, {
@@ -1310,8 +1352,7 @@ function selectSuggestion(sug) {
     if (!selected) return;
     if (!stations || stations.length === 0) return;
 
-    const selectedKey = outletKeyForRow(selected);
-    const match = stations.find(s => outletKeyForRow(s) === selectedKey);
+    const match = findBestSelectedStationMatch(selected, stations);
 
     if (!match) return;
 
@@ -1319,6 +1360,7 @@ function selectSuggestion(sug) {
       if (!prev) return { ...match, trading_area_norm: match.trading_area_norm || (match.trading_area || '').toLowerCase() };
       return {
         ...prev,
+        ...match,
         month: match.month ?? prev.month,
         ms: typeof match.ms === 'number' ? match.ms : prev.ms,
         ms_ly: typeof match.ms_ly === 'number' ? match.ms_ly : prev.ms_ly,
@@ -1326,7 +1368,7 @@ function selectSuggestion(sug) {
         hsd_ly: typeof match.hsd_ly === 'number' ? match.hsd_ly : prev.hsd_ly,
         lat: (match.lat || match.lat === 0) ? match.lat : prev.lat,
         lng: (match.lng || match.lng === 0) ? match.lng : prev.lng,
-        trading_area_norm: prev.trading_area_norm || match.trading_area_norm || (match.trading_area || '').toLowerCase(),
+        trading_area_norm: match.trading_area_norm || prev.trading_area_norm || (match.trading_area || '').toLowerCase(),
       };
     });
   }, [latestMonth, stations]);
@@ -1825,7 +1867,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
     <TileLayer url='https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png' />
     {/* Deselect when clicking anywhere on map that is not a Marker */}
     <DeselectOnMapClick onDeselect={() => { setSelected(null); setTaSelected(null); }} />
-    {stations.map(st => {
+    {stations.filter(st => st.hasMonthData).map(st => {
       if (!st.lat || !st.lng || isNaN(st.lat) || isNaN(st.lng)) return null;
       const cmp = (st.company || '').toString().replace(/\s+/g, '').toUpperCase();
       const baseIcon = iconsMap[cmp] ? iconsMap[cmp] : fallbackIcon(st.company);

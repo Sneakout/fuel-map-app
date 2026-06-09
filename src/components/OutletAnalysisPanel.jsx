@@ -183,7 +183,7 @@ export default function OutletAnalysisPanel({
 
           <div style={{ marginTop: 20 }}>
             <h3 style={{ margin: "0 0 8px 0", display: "flex", alignItems: "center", gap: 6 }}>
-              Area Outlets
+              Trading Area Outlets
               <AnimatePresence mode="wait">
                 <motion.span
                   key={pageIndex === 1 ? "outlets-cumulative-title" : "outlets-monthly-title"}
@@ -251,7 +251,7 @@ export default function OutletAnalysisPanel({
           </div>
 
           <div style={{ marginTop: 20 }}>
-            <h3 style={{ margin: "0 0 8px 0" }}>Area Market Share</h3>
+            <h3 style={{ margin: "0 0 8px 0" }}>Trading Area Market Share</h3>
             <div style={{ background: "#fff", borderRadius: 8, padding: 12, boxShadow: "0 1px 2px rgba(2,6,23,0.04)" }}>
               <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
                 <thead style={{ color: "#94A3B8", textAlign: "left" }}>
