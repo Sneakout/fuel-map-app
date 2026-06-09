@@ -1,6 +1,18 @@
 export const PSU_COMPANIES = new Set(["IOC", "BPC", "HPCL", "HPC"]);
 export const PVT_COMPANIES = new Set(["MRPL", "NEL", "RIL"]);
 export const TA_METRIC_ORDER = ["combined", "ms", "hsd"];
+const PRE_APR_2025_COMMISSIONING_OUTLETS = new Set([
+  "ANANGADI FUELS",
+  "ARAFA PETROMART",
+  "GOLDEN FUELS",
+  "JAI PETROLEUM",
+  "MEKKAMANNIL PETROLEUMS",
+  "MKM PETROLEUM",
+  "ZEAL FUELS",
+]);
+const TERMINATED_OUTLETS = new Set([
+  "KOOLATH MOHAMMED SONS",
+]);
 
 export function formatMonth(monthStr) {
   if (!monthStr) return "";
@@ -577,6 +589,17 @@ function rowHasPositiveSales(row) {
   return rowHasActualValues(row) && (Number(row?.ms || 0) > 0 || Number(row?.hsd || 0) > 0);
 }
 
+function canonicalCommissioningName(value) {
+  return (value || "")
+    .toString()
+    .trim()
+    .toUpperCase()
+    .replace(/^[\s./-]*(M\/S|MSHSD|MS\/HSD|MS HSD|MS|HSD)\b[\s./-]*/i, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function findSustainedSalesStartRow(rows) {
   const actualRows = (rows || []).filter((row) => rowHasActualValues(row));
   for (let index = 0; index < actualRows.length; index += 1) {
@@ -603,20 +626,27 @@ export function buildCommissioningData(stations, fiscalYears = []) {
       .sort((a, b) => monthToken(a.month) - monthToken(b.month));
     if (!rows.length) return;
 
+    const outletName = canonicalCommissioningName(station.name);
+    if (TERMINATED_OUTLETS.has(outletName)) return;
+
     const firstRow = rows[0];
+    const firstPositiveRow = rows.find((row) => rowHasPositiveSales(row)) || null;
     const sustainedSalesStartRow = findSustainedSalesStartRow(rows);
     const firstRowHasPositive = rowHasPositiveSales(firstRow);
-    const preDatasetCommissioning =
-      monthToken(firstRow.month) === monthToken(earliestMonth) &&
-      !firstRowHasPositive;
+    const preDatasetCommissioning = PRE_APR_2025_COMMISSIONING_OUTLETS.has(outletName);
     const isCommissioned =
       monthToken(firstRow.month) > monthToken(earliestMonth) ||
-      !firstRowHasPositive;
+      !firstRowHasPositive ||
+      Boolean(firstPositiveRow);
 
     if (!isCommissioned) return;
 
-    const commissionedMonth = preDatasetCommissioning ? preDatasetMonth : firstRow.month;
-    const commissionedDisplay = preDatasetCommissioning ? preDatasetLabel : formatMonth(firstRow.month);
+    const commissionedMonth = preDatasetCommissioning
+      ? preDatasetMonth
+      : (monthToken(firstRow.month) > monthToken(earliestMonth)
+          ? firstRow.month
+          : (firstPositiveRow?.month || firstRow.month));
+    const commissionedDisplay = preDatasetCommissioning ? preDatasetLabel : formatMonth(commissionedMonth);
 
     const commissionEvent = {
       outlet: station.name,
