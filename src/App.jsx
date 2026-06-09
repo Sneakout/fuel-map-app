@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import {
+  buildCommissioningData,
   TA_METRIC_ORDER,
   buildProjectionRows,
   buildCumulativeGrowthRowsHSD,
@@ -775,6 +776,68 @@ function CompanyFilterSelector({ value, onChange, companies }) {
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function CountSummaryTable({ rows, label }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <h4 style={{ margin: "0 0 6px 0" }}>{label}</h4>
+      <div style={{ background: "#fff", borderRadius: 8, padding: 12, boxShadow: "0 1px 2px rgba(2,6,23,0.04)" }}>
+        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+          <thead style={{ color: "#94A3B8", textAlign: "left" }}>
+            <tr>
+              <th style={{ padding: "8px 6px" }}>Company</th>
+              <th style={{ padding: "8px 6px" }}>Count</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(!rows || rows.length === 0) ? (
+              <tr><td colSpan={2} style={{ padding: 16, color: "#64748B" }}>No data.</td></tr>
+            ) : rows.map((row, index) => (
+              <tr key={index} style={{ borderTop: "1px solid #F1F5F9" }}>
+                <td style={{ padding: "8px 6px" }}>{row.company}</td>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{row.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function CommissioningTable({ rows, label, monthLabel, trailingLabel }) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <h4 style={{ margin: "0 0 6px 0" }}>{label}</h4>
+      <div style={{ background: "#fff", borderRadius: 8, padding: 12, boxShadow: "0 1px 2px rgba(2,6,23,0.04)" }}>
+        <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+          <thead style={{ color: "#94A3B8", textAlign: "left" }}>
+            <tr>
+              <th style={{ padding: "8px 6px" }}>Month</th>
+              <th style={{ padding: "8px 6px" }}>Company</th>
+              <th style={{ padding: "8px 6px" }}>Outlet</th>
+              <th style={{ padding: "8px 6px" }}>Trading area</th>
+              <th style={{ padding: "8px 6px" }}>{trailingLabel}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {(!rows || rows.length === 0) ? (
+              <tr><td colSpan={5} style={{ padding: 16, color: "#64748B" }}>No outlets in this financial year.</td></tr>
+            ) : rows.map((row, index) => (
+              <tr key={index} style={{ borderTop: "1px solid #F1F5F9" }}>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{formatMonth(row.month)}</td>
+                <td style={{ padding: "8px 6px" }}>{row.company}</td>
+                <td style={{ padding: "8px 6px" }}>{row.outlet}</td>
+                <td style={{ padding: "8px 6px" }}>{row.trading_area}</td>
+                <td style={{ padding: "8px 6px" }}>{row[monthLabel] ? formatMonth(row[monthLabel]) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -2219,6 +2282,12 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#EDE9FE', cursor:'pointer' }}
           >Projection</button>
 
+          <button
+            onClick={() => setPageIndex(11)}
+            title="Commissioned outlets and sales starts by financial year"
+            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFEFF', cursor:'pointer' }}
+          >Commissioning</button>
+
           {/* Growth/MarketShare pages when no RO is selected */}
           {pageIndex >= 2 && (() => {
             const startMonth = fiscalYearStartMonth(latestMonth);
@@ -2237,6 +2306,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth, marketShareScope);
             const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope, projectionMonth);
             const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope, projectionMonth);
+            const commissioningData = buildCommissioningData(stations, ["2025-26", "2026-27"]);
 
             // Decide which page to show
             if (pageIndex === 6) {
@@ -2316,6 +2386,35 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                     label="HSD Projection"
                   />
                   <ProjectionMethodologyNote latestMonth={latestMonth} targetMonth={projectionMonth} />
+                </div>
+              );
+            }
+            if (pageIndex === 11) {
+              return (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                    <h3 style={{ margin: 0 }}>Commissioning</h3>
+                  </div>
+                  <PageContextLine>Financial years are grouped from April to March.</PageContextLine>
+                  {commissioningData.map((fyBlock) => (
+                    <div key={fyBlock.fiscalYear} style={{ marginTop: 18 }}>
+                      <h4 style={{ margin: "0 0 8px 0" }}>FY {fyBlock.fiscalYear}</h4>
+                      <CountSummaryTable rows={fyBlock.commissionedSummary} label="Commissioned Outlets" />
+                      <CommissioningTable
+                        rows={fyBlock.commissioned}
+                        label="Commissioning Details"
+                        monthLabel="salesStartMonth"
+                        trailingLabel="Sales start"
+                      />
+                      <CountSummaryTable rows={fyBlock.salesStartedSummary} label="Sales Started Outlets" />
+                      <CommissioningTable
+                        rows={fyBlock.salesStarted}
+                        label="Sales Start Details"
+                        monthLabel="commissionedMonth"
+                        trailingLabel="Commissioned"
+                      />
+                    </div>
+                  ))}
                 </div>
               );
             }

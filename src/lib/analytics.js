@@ -98,6 +98,16 @@ export function fiscalYearStartMonth(monthStr) {
   return `${month >= 4 ? year : year - 1}-04`;
 }
 
+export function fiscalYearLabel(monthStr) {
+  const [yearRaw, monthRaw] = (monthStr || "").split("-");
+  const year = Number(yearRaw);
+  const month = Number(monthRaw);
+  if (!year || !month) return "";
+  const startYear = month >= 4 ? year : year - 1;
+  const endYearShort = String((startYear + 1) % 100).padStart(2, "0");
+  return `${startYear}-${endYearShort}`;
+}
+
 export function cumulativeForOutletRows(rows, startMonth, endMonth) {
   const sum = { ms: 0, hsd: 0, ms_ly: 0, hsd_ly: 0 };
   rows.forEach((r) => {
@@ -561,6 +571,89 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
     rows,
     targetMonth,
   };
+}
+
+function rowHasPositiveSales(row) {
+  return rowHasActualValues(row) && (Number(row?.ms || 0) > 0 || Number(row?.hsd || 0) > 0);
+}
+
+export function buildCommissioningData(stations, fiscalYears = []) {
+  const earliestMonth = uniqueSortedMonths(
+    (stations || []).flatMap((station) => station.rows || [])
+  ).reverse()[0] || "";
+
+  const commissioned = [];
+  const salesStarted = [];
+
+  (stations || []).forEach((station) => {
+    const rows = [...(station.rows || [])]
+      .filter((row) => (row.month || "").toString().trim())
+      .sort((a, b) => monthToken(a.month) - monthToken(b.month));
+    if (!rows.length) return;
+
+    const firstRow = rows[0];
+    const firstPositiveRow = rows.find((row) => rowHasPositiveSales(row)) || null;
+    const firstRowHasPositive = rowHasPositiveSales(firstRow);
+    const isCommissioned =
+      monthToken(firstRow.month) > monthToken(earliestMonth) ||
+      !firstRowHasPositive;
+
+    if (!isCommissioned) return;
+
+    const commissionEvent = {
+      outlet: station.name,
+      company: station.company,
+      trading_area: station.trading_area,
+      month: firstRow.month,
+      fiscalYear: fiscalYearLabel(firstRow.month),
+      salesStartMonth: firstPositiveRow?.month || "",
+    };
+    commissioned.push(commissionEvent);
+
+    if (firstPositiveRow) {
+      salesStarted.push({
+        outlet: station.name,
+        company: station.company,
+        trading_area: station.trading_area,
+        month: firstPositiveRow.month,
+        fiscalYear: fiscalYearLabel(firstPositiveRow.month),
+        commissionedMonth: firstRow.month,
+      });
+    }
+  });
+
+  const filterByFiscalYears = (rows) =>
+    rows.filter((row) => !fiscalYears.length || fiscalYears.includes(row.fiscalYear));
+
+  const summarize = (rows) => {
+    const byCompany = {};
+    rows.forEach((row) => {
+      const company = (row.company || "").toString().trim().toUpperCase();
+      if (!company) return;
+      byCompany[company] = (byCompany[company] || 0) + 1;
+    });
+    return Object.entries(byCompany)
+      .map(([company, count]) => ({ company, count }))
+      .sort((a, b) => b.count - a.count || a.company.localeCompare(b.company));
+  };
+
+  return (fiscalYears.length ? fiscalYears : Array.from(new Set([
+    ...commissioned.map((row) => row.fiscalYear),
+    ...salesStarted.map((row) => row.fiscalYear),
+  ])).sort())
+    .map((fy) => {
+      const fyCommissioned = filterByFiscalYears(commissioned).filter((row) => row.fiscalYear === fy)
+        .sort((a, b) => monthToken(a.month) - monthToken(b.month) || a.company.localeCompare(b.company) || a.outlet.localeCompare(b.outlet));
+      const fySalesStarted = filterByFiscalYears(salesStarted).filter((row) => row.fiscalYear === fy)
+        .sort((a, b) => monthToken(a.month) - monthToken(b.month) || a.company.localeCompare(b.company) || a.outlet.localeCompare(b.outlet));
+      return {
+        fiscalYear: fy,
+        commissioned: fyCommissioned,
+        salesStarted: fySalesStarted,
+        commissionedSummary: summarize(fyCommissioned),
+        salesStartedSummary: summarize(fySalesStarted),
+      };
+    });
 }
 
 export function buildTradingAreaOutletRows(outlets, totals) {
