@@ -2307,7 +2307,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth, marketShareScope);
             const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope, projectionMonth);
             const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope, projectionMonth);
-            const commissioningData = buildCommissioningData(stations, ["2024-25", "2025-26", "2026-27"]);
+            const commissioningData = buildCommissioningData(stations, ["2025-26", "2026-27"]);
             const commissioningCompanyOptions = Array.from(
               new Set(
                 commissioningData.flatMap((fyBlock) => [
@@ -2409,7 +2409,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                       companies={commissioningCompanyOptions}
                     />
                   </div>
-                  <PageContextLine>Financial years are grouped from April to March. Outlets already present in Apr 2025 with no sales are treated as commissioned before Apr 2025.</PageContextLine>
+                  <PageContextLine>Financial years are grouped from April to March. Sales start is shown only when sales continue from that month onward in later actual months.</PageContextLine>
                   {commissioningData.map((fyBlock) => {
                     const commissioned = commissioningCompanyFilter === "all"
                       ? fyBlock.commissioned

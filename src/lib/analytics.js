@@ -632,20 +632,25 @@ export function buildCommissioningData(stations, fiscalYears = []) {
     const firstRow = rows[0];
     const firstPositiveRow = rows.find((row) => rowHasPositiveSales(row)) || null;
     const sustainedSalesStartRow = findSustainedSalesStartRow(rows);
-    const firstRowHasPositive = rowHasPositiveSales(firstRow);
+    const actualRows = rows.filter((row) => rowHasActualValues(row));
     const preDatasetCommissioning = PRE_APR_2025_COMMISSIONING_OUTLETS.has(outletName);
+    const appearedLater = monthToken(firstRow.month) > monthToken(earliestMonth);
+    const priorActualRows = firstPositiveRow
+      ? actualRows.filter((row) => monthToken(row.month) < monthToken(firstPositiveRow.month))
+      : [];
+    const hadZeroLeadIn =
+      Boolean(firstPositiveRow) &&
+      priorActualRows.length > 0 &&
+      priorActualRows.every((row) => !rowHasPositiveSales(row));
     const isCommissioned =
-      monthToken(firstRow.month) > monthToken(earliestMonth) ||
-      !firstRowHasPositive ||
-      Boolean(firstPositiveRow);
+      preDatasetCommissioning ||
+      Boolean(firstPositiveRow && (appearedLater || hadZeroLeadIn));
 
     if (!isCommissioned) return;
 
     const commissionedMonth = preDatasetCommissioning
       ? preDatasetMonth
-      : (monthToken(firstRow.month) > monthToken(earliestMonth)
-          ? firstRow.month
-          : (firstPositiveRow?.month || firstRow.month));
+      : (firstPositiveRow?.month || firstRow.month);
     const commissionedDisplay = preDatasetCommissioning ? preDatasetLabel : formatMonth(commissionedMonth);
 
     const commissionEvent = {
