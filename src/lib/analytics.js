@@ -581,6 +581,8 @@ export function buildCommissioningData(stations, fiscalYears = []) {
   const earliestMonth = uniqueSortedMonths(
     (stations || []).flatMap((station) => station.rows || [])
   ).reverse()[0] || "";
+  const preDatasetMonth = earliestMonth ? monthFromToken(monthToken(earliestMonth) - 1) : "";
+  const preDatasetLabel = earliestMonth ? `Before ${formatMonth(earliestMonth)}` : "Before dataset start";
 
   const commissioned = [];
   const salesStarted = [];
@@ -594,19 +596,27 @@ export function buildCommissioningData(stations, fiscalYears = []) {
     const firstRow = rows[0];
     const firstPositiveRow = rows.find((row) => rowHasPositiveSales(row)) || null;
     const firstRowHasPositive = rowHasPositiveSales(firstRow);
+    const preDatasetCommissioning =
+      monthToken(firstRow.month) === monthToken(earliestMonth) &&
+      !firstRowHasPositive;
     const isCommissioned =
       monthToken(firstRow.month) > monthToken(earliestMonth) ||
       !firstRowHasPositive;
 
     if (!isCommissioned) return;
 
+    const commissionedMonth = preDatasetCommissioning ? preDatasetMonth : firstRow.month;
+    const commissionedDisplay = preDatasetCommissioning ? preDatasetLabel : formatMonth(firstRow.month);
+
     const commissionEvent = {
       outlet: station.name,
       company: station.company,
       trading_area: station.trading_area,
-      month: firstRow.month,
-      fiscalYear: fiscalYearLabel(firstRow.month),
+      month: commissionedMonth,
+      monthDisplay: commissionedDisplay,
+      fiscalYear: fiscalYearLabel(commissionedMonth),
       salesStartMonth: firstPositiveRow?.month || "",
+      salesStartMonthDisplay: firstPositiveRow?.month ? formatMonth(firstPositiveRow.month) : "",
     };
     commissioned.push(commissionEvent);
 
@@ -616,8 +626,10 @@ export function buildCommissioningData(stations, fiscalYears = []) {
         company: station.company,
         trading_area: station.trading_area,
         month: firstPositiveRow.month,
+        monthDisplay: formatMonth(firstPositiveRow.month),
         fiscalYear: fiscalYearLabel(firstPositiveRow.month),
-        commissionedMonth: firstRow.month,
+        commissionedMonth,
+        commissionedMonthDisplay: commissionedDisplay,
       });
     }
   });

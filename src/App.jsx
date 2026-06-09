@@ -828,11 +828,11 @@ function CommissioningTable({ rows, label, monthLabel, trailingLabel }) {
               <tr><td colSpan={5} style={{ padding: 16, color: "#64748B" }}>No outlets in this financial year.</td></tr>
             ) : rows.map((row, index) => (
               <tr key={index} style={{ borderTop: "1px solid #F1F5F9" }}>
-                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{formatMonth(row.month)}</td>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{row.monthDisplay || formatMonth(row.month)}</td>
                 <td style={{ padding: "8px 6px" }}>{row.company}</td>
                 <td style={{ padding: "8px 6px" }}>{row.outlet}</td>
                 <td style={{ padding: "8px 6px" }}>{row.trading_area}</td>
-                <td style={{ padding: "8px 6px" }}>{row[monthLabel] ? formatMonth(row[monthLabel]) : "—"}</td>
+                <td style={{ padding: "8px 6px" }}>{row[`${monthLabel}Display`] || (row[monthLabel] ? formatMonth(row[monthLabel]) : "—")}</td>
               </tr>
             ))}
           </tbody>
@@ -2306,7 +2306,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth, marketShareScope);
             const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope, projectionMonth);
             const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope, projectionMonth);
-            const commissioningData = buildCommissioningData(stations, ["2025-26", "2026-27"]);
+            const commissioningData = buildCommissioningData(stations, ["2024-25", "2025-26", "2026-27"]);
 
             // Decide which page to show
             if (pageIndex === 6) {
@@ -2395,7 +2395,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                     <h3 style={{ margin: 0 }}>Commissioning</h3>
                   </div>
-                  <PageContextLine>Financial years are grouped from April to March.</PageContextLine>
+                  <PageContextLine>Financial years are grouped from April to March. Outlets already present in Apr 2025 with no sales are treated as commissioned before Apr 2025.</PageContextLine>
                   {commissioningData.map((fyBlock) => (
                     <div key={fyBlock.fiscalYear} style={{ marginTop: 18 }}>
                       <h4 style={{ margin: "0 0 8px 0" }}>FY {fyBlock.fiscalYear}</h4>
