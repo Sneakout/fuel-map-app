@@ -600,6 +600,20 @@ function canonicalCommissioningName(value) {
     .trim();
 }
 
+function canonicalCommissioningCompany(value) {
+  const raw = (value || "").toString().trim().toUpperCase();
+  if (raw === "IOCL") return "IOC";
+  if (raw === "BPCL") return "BPC";
+  if (raw === "HPC") return "HPCL";
+  return raw;
+}
+
+function normalizeCommissioningOutletId(value) {
+  return String(value || "")
+    .replace(/,/g, "")
+    .trim();
+}
+
 function findSustainedSalesStartRow(rows) {
   const actualRows = (rows || []).filter((row) => rowHasActualValues(row));
   for (let index = 0; index < actualRows.length; index += 1) {
@@ -619,14 +633,26 @@ export function buildCommissioningData(stations, fiscalYears = []) {
 
   const commissioned = [];
   const salesStarted = [];
+  const outletGroups = new Map();
 
   (stations || []).forEach((station) => {
-    const rows = [...(station.rows || [])]
+    (station.rows || []).forEach((row) => {
+      const outletId = normalizeCommissioningOutletId(row.outlet_id || row.id);
+      const identity = outletId || `${canonicalCommissioningName(row.name)}::${canonicalCommissioningCompany(row.company)}`;
+      if (!identity) return;
+      if (!outletGroups.has(identity)) outletGroups.set(identity, []);
+      outletGroups.get(identity).push(row);
+    });
+  });
+
+  outletGroups.forEach((groupedRows) => {
+    const rows = [...groupedRows]
       .filter((row) => (row.month || "").toString().trim())
       .sort((a, b) => monthToken(a.month) - monthToken(b.month));
     if (!rows.length) return;
 
-    const outletName = canonicalCommissioningName(station.name);
+    const latestNamedRow = [...rows].reverse().find((row) => canonicalCommissioningName(row.name)) || rows[rows.length - 1];
+    const outletName = canonicalCommissioningName(latestNamedRow.name);
     if (TERMINATED_OUTLETS.has(outletName)) return;
 
     const firstRow = rows[0];
@@ -654,9 +680,9 @@ export function buildCommissioningData(stations, fiscalYears = []) {
     const commissionedDisplay = preDatasetCommissioning ? preDatasetLabel : formatMonth(commissionedMonth);
 
     const commissionEvent = {
-      outlet: station.name,
-      company: station.company,
-      trading_area: station.trading_area,
+      outlet: (latestNamedRow.name || "").toString().trim(),
+      company: canonicalCommissioningCompany(latestNamedRow.company),
+      trading_area: (latestNamedRow.trading_area || latestNamedRow.area || "").toString().trim(),
       month: commissionedMonth,
       monthDisplay: commissionedDisplay,
       fiscalYear: fiscalYearLabel(commissionedMonth),
@@ -667,9 +693,9 @@ export function buildCommissioningData(stations, fiscalYears = []) {
 
     if (sustainedSalesStartRow) {
       salesStarted.push({
-        outlet: station.name,
-        company: station.company,
-        trading_area: station.trading_area,
+        outlet: (latestNamedRow.name || "").toString().trim(),
+        company: canonicalCommissioningCompany(latestNamedRow.company),
+        trading_area: (latestNamedRow.trading_area || latestNamedRow.area || "").toString().trim(),
         month: sustainedSalesStartRow.month,
         monthDisplay: formatMonth(sustainedSalesStartRow.month),
         fiscalYear: fiscalYearLabel(sustainedSalesStartRow.month),
