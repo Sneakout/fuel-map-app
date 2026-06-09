@@ -1040,6 +1040,7 @@ const [latestMonth, setLatestMonth] = useState(() => {
   const [iocLossRankBy, setIocLossRankBy] = useState("share");
   const [marketShareScope, setMarketShareScope] = useState("industry");
   const [growthCompanyFilter, setGrowthCompanyFilter] = useState("all");
+  const [commissioningCompanyFilter, setCommissioningCompanyFilter] = useState("all");
   // safe memoized cumulative sums for currently selected RO
 const cumulativeSums = useMemo(() => {
   if (!selected) return null;
@@ -2307,6 +2308,14 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope, projectionMonth);
             const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope, projectionMonth);
             const commissioningData = buildCommissioningData(stations, ["2024-25", "2025-26", "2026-27"]);
+            const commissioningCompanyOptions = Array.from(
+              new Set(
+                commissioningData.flatMap((fyBlock) => [
+                  ...fyBlock.commissioned.map((row) => (row.company || "").toString().trim().toUpperCase()),
+                  ...fyBlock.salesStarted.map((row) => (row.company || "").toString().trim().toUpperCase()),
+                ]).filter(Boolean)
+              )
+            ).sort();
 
             // Decide which page to show
             if (pageIndex === 6) {
@@ -2394,27 +2403,48 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                     <h3 style={{ margin: 0 }}>Commissioning</h3>
+                    <CompanyFilterSelector
+                      value={commissioningCompanyFilter}
+                      onChange={setCommissioningCompanyFilter}
+                      companies={commissioningCompanyOptions}
+                    />
                   </div>
                   <PageContextLine>Financial years are grouped from April to March. Outlets already present in Apr 2025 with no sales are treated as commissioned before Apr 2025.</PageContextLine>
-                  {commissioningData.map((fyBlock) => (
+                  {commissioningData.map((fyBlock) => {
+                    const commissioned = commissioningCompanyFilter === "all"
+                      ? fyBlock.commissioned
+                      : fyBlock.commissioned.filter((row) => (row.company || "").toString().trim().toUpperCase() === commissioningCompanyFilter);
+                    const salesStarted = commissioningCompanyFilter === "all"
+                      ? fyBlock.salesStarted
+                      : fyBlock.salesStarted.filter((row) => (row.company || "").toString().trim().toUpperCase() === commissioningCompanyFilter);
+                    const commissionedSummary = commissioningCompanyFilter === "all"
+                      ? fyBlock.commissionedSummary
+                      : fyBlock.commissionedSummary.filter((row) => row.company === commissioningCompanyFilter);
+                    const salesStartedSummary = commissioningCompanyFilter === "all"
+                      ? fyBlock.salesStartedSummary
+                      : fyBlock.salesStartedSummary.filter((row) => row.company === commissioningCompanyFilter);
+
+                    if (!commissioned.length && !salesStarted.length) return null;
+
+                    return (
                     <div key={fyBlock.fiscalYear} style={{ marginTop: 18 }}>
                       <h4 style={{ margin: "0 0 8px 0" }}>FY {fyBlock.fiscalYear}</h4>
-                      <CountSummaryTable rows={fyBlock.commissionedSummary} label="Commissioned Outlets" />
+                      <CountSummaryTable rows={commissionedSummary} label="Commissioned Outlets" />
                       <CommissioningTable
-                        rows={fyBlock.commissioned}
+                        rows={commissioned}
                         label="Commissioning Details"
                         monthLabel="salesStartMonth"
                         trailingLabel="Sales start"
                       />
-                      <CountSummaryTable rows={fyBlock.salesStartedSummary} label="Sales Started Outlets" />
+                      <CountSummaryTable rows={salesStartedSummary} label="Sales Started Outlets" />
                       <CommissioningTable
-                        rows={fyBlock.salesStarted}
+                        rows={salesStarted}
                         label="Sales Start Details"
                         monthLabel="commissionedMonth"
                         trailingLabel="Commissioned"
                       />
                     </div>
-                  ))}
+                  )})}
                 </div>
               );
             }
