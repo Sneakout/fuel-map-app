@@ -1,15 +1,6 @@
 export const PSU_COMPANIES = new Set(["IOC", "BPC", "HPCL", "HPC"]);
 export const PVT_COMPANIES = new Set(["MRPL", "NEL", "RIL"]);
 export const TA_METRIC_ORDER = ["combined", "ms", "hsd"];
-const PRE_APR_2025_COMMISSIONING_OUTLETS = new Set([
-  "ANANGADI FUELS",
-  "ARAFA PETROMART",
-  "GOLDEN FUELS",
-  "JAI PETROLEUM",
-  "MEKKAMANNIL PETROLEUMS",
-  "MKM PETROLEUM",
-  "ZEAL FUELS",
-]);
 const TERMINATED_OUTLETS = new Set([
   "KOOLATH MOHAMMED SONS",
 ]);
@@ -465,6 +456,7 @@ function forecastOutletMetricForTarget(station, metric, latestMonth, targetMonth
 export function buildProjectionRows(stations, metric, latestMonth, scope = "industry", targetMonth = nextMonth(latestMonth)) {
   const byCompany = {};
   let totalCurrent = 0;
+  let totalLastYear = 0;
   let totalProjected = 0;
   const projectionContext = companyProjectionContext(stations, metric, latestMonth, targetMonth, scope);
 
@@ -474,7 +466,8 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
     if (scope === "psu" && !PSU_COMPANIES.has(company)) return;
 
     const forecast = forecastOutletMetricForTarget(station, metric, latestMonth, targetMonth, projectionContext);
-    const lastYear = Number(station?.[`${metric}_ly`] || 0);
+    const targetRow = (station?.rows || []).find((row) => (row.month || "").toString().trim() === targetMonth) || null;
+    const lastYear = targetRow ? Number(targetRow[`${metric}_ly`] || 0) : 0;
     if (!byCompany[company]) {
       byCompany[company] = {
         company,
@@ -492,13 +485,15 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
     byCompany[company].confidenceWeighted += forecast.confidenceScore * confidenceWeight;
     byCompany[company].confidenceBase += confidenceWeight;
     totalCurrent += forecast.current;
+    totalLastYear += lastYear;
     totalProjected += forecast.projected;
   });
 
   const rawRows = Object.values(byCompany).map((row) => {
-    const projectedGrowth = row.projected - row.current;
-    const projectedGrowthPct = row.current === 0 ? (row.projected === 0 ? 0 : 100) : (projectedGrowth / row.current) * 100;
+    const projectedGrowth = row.projected - row.last;
+    const projectedGrowthPct = row.last === 0 ? (row.projected === 0 ? 0 : 100) : (projectedGrowth / row.last) * 100;
     const currentShare = totalCurrent ? (row.current / totalCurrent) * 100 : 0;
+    const lastYearShare = totalLastYear ? (row.last / totalLastYear) * 100 : 0;
     const rawProjectedShare = totalProjected ? (row.projected / totalProjected) * 100 : 0;
     const confidenceScore = row.confidenceBase ? row.confidenceWeighted / row.confidenceBase : 0;
     const currentYoYGrowthPct = row.last === 0 ? (row.current === 0 ? 0 : 100) : ((row.current - row.last) / row.last) * 100;
@@ -527,6 +522,7 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
       rawProjected: row.projected,
       projected: adjustedProjected,
       currentShare,
+      lastYearShare,
       rawProjectedShare,
       rawShareChange,
       currentYoYGrowthPct,
@@ -542,8 +538,8 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
   const rows = rawRows
     .map((row) => {
       const projected = row.projected * preserveTotalScale;
-      const projectedGrowth = projected - row.current;
-      const projectedGrowthPct = row.current === 0 ? (projected === 0 ? 0 : 100) : (projectedGrowth / row.current) * 100;
+      const projectedGrowth = projected - row.last;
+      const projectedGrowthPct = row.last === 0 ? (projected === 0 ? 0 : 100) : (projectedGrowth / row.last) * 100;
       const projectedShare = totalProjected ? (projected / totalProjected) * 100 : 0;
       return {
         company: row.company,
@@ -554,8 +550,9 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
         projectedGrowth,
         projectedGrowthPct,
         currentShare: row.currentShare,
+        lastYearShare: row.lastYearShare,
         projectedShare,
-        projectedShareChange: projectedShare - row.currentShare,
+        projectedShareChange: projectedShare - row.lastYearShare,
         currentYoYGrowthPct: row.currentYoYGrowthPct,
         confidence: confidenceLabel(row.confidenceScore),
         confidenceScore: row.confidenceScore,
@@ -567,10 +564,12 @@ export function buildProjectionRows(stations, metric, latestMonth, scope = "indu
   rows.push({
     company: "Total",
     current: totalCurrent,
+    last: totalLastYear,
     projected: totalProjected,
-    projectedGrowth: totalProjected - totalCurrent,
-    projectedGrowthPct: totalCurrent === 0 ? (totalProjected === 0 ? 0 : 100) : ((totalProjected - totalCurrent) / totalCurrent) * 100,
+    projectedGrowth: totalProjected - totalLastYear,
+    projectedGrowthPct: totalLastYear === 0 ? (totalProjected === 0 ? 0 : 100) : ((totalProjected - totalLastYear) / totalLastYear) * 100,
     currentShare: totalCurrent ? 100 : 0,
+    lastYearShare: totalLastYear ? 100 : 0,
     projectedShare: totalProjected ? 100 : 0,
     projectedShareChange: 0,
     currentYoYGrowthPct: 0,
@@ -625,12 +624,6 @@ function findSustainedSalesStartRow(rows) {
 }
 
 export function buildCommissioningData(stations, fiscalYears = []) {
-  const earliestMonth = uniqueSortedMonths(
-    (stations || []).flatMap((station) => station.rows || [])
-  ).reverse()[0] || "";
-  const preDatasetMonth = earliestMonth ? monthFromToken(monthToken(earliestMonth) - 1) : "";
-  const preDatasetLabel = earliestMonth ? `Before ${formatMonth(earliestMonth)}` : "Before dataset start";
-
   const commissioned = [];
   const salesStarted = [];
   const outletGroups = new Map();
@@ -655,29 +648,12 @@ export function buildCommissioningData(stations, fiscalYears = []) {
     const outletName = canonicalCommissioningName(latestNamedRow.name);
     if (TERMINATED_OUTLETS.has(outletName)) return;
 
-    const firstRow = rows[0];
     const firstPositiveRow = rows.find((row) => rowHasPositiveSales(row)) || null;
+    if (!firstPositiveRow) return;
+
     const sustainedSalesStartRow = findSustainedSalesStartRow(rows);
-    const actualRows = rows.filter((row) => rowHasActualValues(row));
-    const preDatasetCommissioning = PRE_APR_2025_COMMISSIONING_OUTLETS.has(outletName);
-    const appearedLater = monthToken(firstRow.month) > monthToken(earliestMonth);
-    const priorActualRows = firstPositiveRow
-      ? actualRows.filter((row) => monthToken(row.month) < monthToken(firstPositiveRow.month))
-      : [];
-    const hadZeroLeadIn =
-      Boolean(firstPositiveRow) &&
-      priorActualRows.length > 0 &&
-      priorActualRows.every((row) => !rowHasPositiveSales(row));
-    const isCommissioned =
-      preDatasetCommissioning ||
-      Boolean(firstPositiveRow && (appearedLater || hadZeroLeadIn));
-
-    if (!isCommissioned) return;
-
-    const commissionedMonth = preDatasetCommissioning
-      ? preDatasetMonth
-      : (firstPositiveRow?.month || firstRow.month);
-    const commissionedDisplay = preDatasetCommissioning ? preDatasetLabel : formatMonth(commissionedMonth);
+    const commissionedMonth = firstPositiveRow.month;
+    const commissionedDisplay = formatMonth(commissionedMonth);
 
     const commissionEvent = {
       outlet: (latestNamedRow.name || "").toString().trim(),

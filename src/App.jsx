@@ -546,7 +546,12 @@ function MarketShareTable({ rows, label }) {
   );
 }
 
-function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
+function ProjectionTable({ rows, label, targetMonth }) {
+  const [targetYearRaw] = (targetMonth || "").split("-");
+  const targetYear = Number(targetYearRaw);
+  const lastYearMonthLabel = targetYear
+    ? `${formatMonth(targetMonth).replace(/\s+\d{4}$/, "")} ${targetYear - 1}`
+    : "Last year";
   return (
     <div style={{ marginTop: 10 }}>
       <h4 style={{ margin: "0 0 6px 0" }}>{label}</h4>
@@ -555,11 +560,11 @@ function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
           <thead style={{ color: "#94A3B8", textAlign: "left" }}>
             <tr>
               <th style={{ padding: "8px 6px" }}>Company</th>
-              <th style={{ padding: "8px 6px" }}>{formatMonth(currentMonth)} sales</th>
+              <th style={{ padding: "8px 6px" }}>{lastYearMonthLabel} sales</th>
               <th style={{ padding: "8px 6px" }}>{formatMonth(targetMonth)} projected sales</th>
               <th style={{ padding: "8px 6px" }}>Projected growth</th>
               <th style={{ padding: "8px 6px" }}>Projected growth %</th>
-              <th style={{ padding: "8px 6px" }}>Current share</th>
+              <th style={{ padding: "8px 6px" }}>{lastYearMonthLabel} share</th>
               <th style={{ padding: "8px 6px" }}>Projected share</th>
               <th style={{ padding: "8px 6px" }}>Projected change</th>
               <th style={{ padding: "8px 6px" }}>Confidence</th>
@@ -571,7 +576,7 @@ function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
             ) : rows.map((r, index) => (
               <tr key={index} style={{ borderTop: "1px solid #F1F5F9", fontWeight: r.isTotal ? 700 : 400, background: r.isTotal ? "rgba(248,250,252,0.8)" : "transparent" }}>
                 <td style={{ padding: "8px 6px" }}>{r.company}</td>
-                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{formatRoundedNumber(r.current)}</td>
+                <td style={{ padding: "8px 6px", fontWeight: 700 }}>{formatRoundedNumber(r.last)}</td>
                 <td style={{ padding: "8px 6px", fontWeight: 700 }}>{formatRoundedNumber(r.projected)}</td>
                 <td style={{
                   padding: "8px 6px",
@@ -585,7 +590,7 @@ function ProjectionTable({ rows, label, currentMonth, targetMonth }) {
                   color: (r.projectedGrowthPct || 0) >= 0 ? "#064E3B" : "#7F1D1D",
                   fontWeight: 700
                 }}>{Number(r.projectedGrowthPct || 0).toFixed(1)}%</td>
-                <td style={{ padding: "8px 6px" }}>{Number(r.currentShare || 0).toFixed(2)}%</td>
+                <td style={{ padding: "8px 6px" }}>{Number(r.lastYearShare || 0).toFixed(2)}%</td>
                 <td style={{ padding: "8px 6px" }}>{Number(r.projectedShare || 0).toFixed(2)}%</td>
                 <td style={{
                   padding: "8px 6px",
@@ -625,7 +630,8 @@ function ProjectionMethodologyNote({ latestMonth, targetMonth }) {
       Projection for <strong>{formatMonth(targetMonth)}</strong> is estimated outlet by outlet using the target month last year as the seasonal base,
       then adjusted using the latest actual trend through <strong>{formatMonth(latestMonth)}</strong>, outlet-level year-on-year movement, and company-level
       momentum. That makes the forecast anchor to actual <strong>{targetMonthLastYearLabel}</strong> sales where available instead of extrapolating
-      only from recent months. Company sales and market share are then computed by summing the projected outlet sales. If a company's
+      only from recent months. The table compares projected <strong>{formatMonth(targetMonth)}</strong> directly against actual <strong>{targetMonthLastYearLabel}</strong> sales and share.
+      Company sales and market share are then computed by summing the projected outlet sales. If a company's
       projected one-month market share move is unusually large or outruns its current aggregate trend, the forecast is automatically damped and the
       confidence is reduced. Confidence reflects how much history exists for that outlet set and how stable the recent sales pattern has been through
       <strong> {formatMonth(latestMonth)}</strong>.
@@ -2307,7 +2313,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             const hsdCum     = marketShareRowsAllCumulative_HSD(stations, startMonth, latestMonth, marketShareScope);
             const msProjection = buildProjectionRows(stations, "ms", latestMonth, marketShareScope, projectionMonth);
             const hsdProjection = buildProjectionRows(stations, "hsd", latestMonth, marketShareScope, projectionMonth);
-            const commissioningData = buildCommissioningData(stations, ["2025-26", "2026-27"]);
+            const commissioningData = buildCommissioningData(stations, ["2024-25", "2025-26", "2026-27"]);
             const commissioningCompanyOptions = Array.from(
               new Set(
                 commissioningData.flatMap((fyBlock) => [
@@ -2381,16 +2387,14 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                     <h3 style={{ margin: 0 }}>Projection</h3>
                     <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
                   </div>
-                  <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • ${formatMonth(projectionMonth)} forecast from ${formatMonth(latestMonth)} actuals`}</PageContextLine>
+                  <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • ${formatMonth(projectionMonth)} projected vs ${formatMonth(projectionMonth).replace(/\s+\d{4}$/, "")} ${Number((projectionMonth || "").split("-")[0] || 0) - 1}`}</PageContextLine>
                   <ProjectionTable
                     rows={msProjection.rows}
-                    currentMonth={latestMonth}
                     targetMonth={msProjection.targetMonth}
                     label="MS Projection"
                   />
                   <ProjectionTable
                     rows={hsdProjection.rows}
-                    currentMonth={latestMonth}
                     targetMonth={hsdProjection.targetMonth}
                     label="HSD Projection"
                   />
@@ -2409,7 +2413,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                       companies={commissioningCompanyOptions}
                     />
                   </div>
-                  <PageContextLine>Financial years are grouped from April to March. Sales start is shown only when sales continue from that month onward in later actual months.</PageContextLine>
+                  <PageContextLine>Financial years are grouped from April to March. Commissioning is the first month with any sales transaction for that outlet ID. Sales start is the first later month from which sales continue in every actual month.</PageContextLine>
                   {commissioningData.map((fyBlock) => {
                     const commissioned = commissioningCompanyFilter === "all"
                       ? fyBlock.commissioned
