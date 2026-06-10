@@ -27,6 +27,93 @@
 /* subtle indicator when active */
 .nav-btn.primary { box-shadow: 0 6px 18px rgba(30,58,138,0.12); }
 
+.analysis-tabs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 0 16px;
+  padding: 4px 2px 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.analysis-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.analysis-tabs::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.analysis-tab {
+  flex: 0 0 auto;
+  appearance: none;
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: #fff;
+  color: #1f3347;
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.15;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease;
+}
+
+.analysis-tab:hover {
+  border-color: rgba(37, 99, 235, 0.30);
+  background: #f8fafc;
+}
+
+.analysis-tab:focus,
+.analysis-tab:focus-visible {
+  outline: none;
+}
+
+.analysis-tab:focus-visible {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  border-color: #2563eb;
+}
+
+.analysis-tab.active {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #0f2f63;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, 0.10);
+}
+
+.analysis-tab-sky { background: #f0f9ff; }
+.analysis-tab-green { background: #ecfdf5; }
+.analysis-tab-red { background: #fef2f2; }
+.analysis-tab-rose { background: #fff1f2; }
+.analysis-tab-slate { background: #f8fafc; }
+.analysis-tab-orange { background: #fff7ed; }
+.analysis-tab-amber { background: #fffbeb; }
+.analysis-tab-pink { background: #fdf2f8; }
+.analysis-tab-violet { background: #f5f3ff; }
+.analysis-tab-cyan { background: #ecfeff; }
+
+.analysis-tab.active.analysis-tab-green {
+  border-color: #059669;
+  background: #d1fae5;
+  color: #064e3b;
+}
+
+.analysis-tab.active.analysis-tab-red,
+.analysis-tab.active.analysis-tab-rose {
+  border-color: #dc2626;
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
 /* ===== transition for details panel & tables ===== */
 .selected-panel {
   position: relative;

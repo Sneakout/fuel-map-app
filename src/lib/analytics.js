@@ -627,9 +627,15 @@ export function buildCommissioningData(stations, fiscalYears = []) {
   const commissioned = [];
   const salesStarted = [];
   const outletGroups = new Map();
+  const actualMonthTokens = [];
 
   (stations || []).forEach((station) => {
     (station.rows || []).forEach((row) => {
+      const month = (row.month || "").toString().trim();
+      const token = monthToken(month);
+      if (rowHasActualValues(row) && Number.isFinite(token)) {
+        actualMonthTokens.push(token);
+      }
       const outletId = normalizeCommissioningOutletId(row.outlet_id || row.id);
       const identity = outletId || `${canonicalCommissioningName(row.name)}::${canonicalCommissioningCompany(row.company)}`;
       if (!identity) return;
@@ -637,6 +643,9 @@ export function buildCommissioningData(stations, fiscalYears = []) {
       outletGroups.get(identity).push(row);
     });
   });
+
+  const firstActualMonthToken = actualMonthTokens.length ? Math.min(...actualMonthTokens) : null;
+  const firstActualMonth = firstActualMonthToken === null ? "" : monthFromToken(firstActualMonthToken);
 
   outletGroups.forEach((groupedRows) => {
     const rows = [...groupedRows]
@@ -653,6 +662,13 @@ export function buildCommissioningData(stations, fiscalYears = []) {
 
     const sustainedSalesStartRow = findSustainedSalesStartRow(rows);
     const commissionedMonth = firstPositiveRow.month;
+    const commissionedToken = monthToken(commissionedMonth);
+    const hasPriorDatasetHistory =
+      firstActualMonthToken !== null &&
+      Number.isFinite(commissionedToken) &&
+      commissionedToken > firstActualMonthToken;
+    if (!hasPriorDatasetHistory) return;
+
     const commissionedDisplay = formatMonth(commissionedMonth);
 
     const commissionEvent = {
@@ -711,6 +727,8 @@ export function buildCommissioningData(stations, fiscalYears = []) {
         salesStarted: fySalesStarted,
         commissionedSummary: summarize(fyCommissioned),
         salesStartedSummary: summarize(fySalesStarted),
+        firstActualMonth,
+        hasPriorHistory: Boolean(firstActualMonth),
       };
     });
 }

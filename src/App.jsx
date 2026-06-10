@@ -35,6 +35,18 @@ import { ShareChange } from "./components/analysisShared";
 /* ---------- config ---------- */
 const STORAGE_KEY = "fuelmap_records_v5";
 const LEGACY_STORAGE_KEYS = ["fuelmap_records_v4"];
+const ANALYSIS_TABS = [
+  { index: 2, label: "+M", title: "Positive growth (selected month)", tone: "sky" },
+  { index: 3, label: "+C", title: "Positive growth (cumulative Apr → selected)", tone: "green" },
+  { index: 4, label: "−M", title: "Negative growth (selected month)", tone: "red" },
+  { index: 5, label: "−C", title: "Negative growth (cumulative Apr → selected)", tone: "rose" },
+  { index: 6, label: "Market share", title: "Market share (selected month)", tone: "slate" },
+  { index: 7, label: "Cumulative Market share", title: "Cumulative Market share (Apr → selected)", tone: "orange" },
+  { index: 8, label: "IOC losing TA Month", title: "Highest losing trading area (IOC) - selected month", tone: "amber" },
+  { index: 9, label: "IOC losing TA Cumulative", title: "Highest losing trading area (IOC) - cumulative", tone: "pink" },
+  { index: 10, label: "Projection", title: "Next month sales and market share projection", tone: "violet" },
+  { index: 11, label: "Commissioning", title: "Commissioned outlets and sales starts by financial year", tone: "cyan" },
+];
 
 /* ---------- global styles to ensure full-height map and tooltip layout ---------- */
 
@@ -2236,64 +2248,24 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
       ) : !selected ? (
         <div>
           {/* Buttons visible when NO RO is selected */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => setPageIndex(2)}
-              title="Positive growth (selected month)"
-              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F0F9FF', cursor:'pointer' }}
-            >+M</button>
-            <button
-              onClick={() => setPageIndex(3)}
-              title="Positive growth (cumulative Apr → selected)"
-              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFDF5', cursor:'pointer' }}
-            >+C</button>
-            <button
-              onClick={() => setPageIndex(4)}
-              title="Negative growth (selected month)"
-              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF2F2', cursor:'pointer' }}
-            >−M</button>
-            <button
-              onClick={() => setPageIndex(5)}
-              title="Negative growth (cumulative Apr → selected)"
-              style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFE4E6', cursor:'pointer' }}
-            >−C</button>
+          <div className="analysis-tabs" role="tablist" aria-label="Analysis views">
+            {ANALYSIS_TABS.map((tab) => {
+              const active = pageIndex === tab.index;
+              return (
+                <button
+                  key={tab.index}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  className={`analysis-tab analysis-tab-${tab.tone}${active ? " active" : ""}`}
+                  onClick={() => setPageIndex(tab.index)}
+                  title={tab.title}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
           </div>
-
-          <button
-            onClick={() => setPageIndex(6)}
-            title="Market share (selected month)"
-            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#F8FAFC', cursor:'pointer' }}
-          >Market share</button>
-
-          <button
-            onClick={() => setPageIndex(7)}
-            title="Cumulative Market share (Apr → selected)"
-            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FFF7ED', cursor:'pointer' }}
-          >Cumulative Market share</button>
-
-          <button
-            onClick={() => setPageIndex(8)}
-            title="Highest losing trading area (IOC) - selected month"
-            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FEF3C7', cursor:'pointer' }}
-          >IOC losing TA Month</button>
-
-          <button
-            onClick={() => setPageIndex(9)}
-            title="Highest losing trading area (IOC) - cumulative"
-            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#FCE7F3', cursor:'pointer' }}
-          >IOC losing TA Cumulative</button>
-
-          <button
-            onClick={() => setPageIndex(10)}
-            title="Next month sales and market share projection"
-            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#EDE9FE', cursor:'pointer' }}
-          >Projection</button>
-
-          <button
-            onClick={() => setPageIndex(11)}
-            title="Commissioned outlets and sales starts by financial year"
-            style={{ padding: '8px 10px', borderRadius: 8, border: 'none', background:'#ECFEFF', cursor:'pointer' }}
-          >Commissioning</button>
 
           {/* Growth/MarketShare pages when no RO is selected */}
           {pageIndex >= 2 && (() => {
@@ -2403,6 +2375,25 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               );
             }
             if (pageIndex === 11) {
+              const filteredCommissioningBlocks = commissioningData
+                .map((fyBlock) => {
+                  const commissioned = commissioningCompanyFilter === "all"
+                    ? fyBlock.commissioned
+                    : fyBlock.commissioned.filter((row) => (row.company || "").toString().trim().toUpperCase() === commissioningCompanyFilter);
+                  const salesStarted = commissioningCompanyFilter === "all"
+                    ? fyBlock.salesStarted
+                    : fyBlock.salesStarted.filter((row) => (row.company || "").toString().trim().toUpperCase() === commissioningCompanyFilter);
+                  const commissionedSummary = commissioningCompanyFilter === "all"
+                    ? fyBlock.commissionedSummary
+                    : fyBlock.commissionedSummary.filter((row) => row.company === commissioningCompanyFilter);
+                  const salesStartedSummary = commissioningCompanyFilter === "all"
+                    ? fyBlock.salesStartedSummary
+                    : fyBlock.salesStartedSummary.filter((row) => row.company === commissioningCompanyFilter);
+                  return { ...fyBlock, commissioned, salesStarted, commissionedSummary, salesStartedSummary };
+                })
+                .filter((fyBlock) => fyBlock.commissioned.length || fyBlock.salesStarted.length);
+              const firstActualMonth = commissioningData.find((fyBlock) => fyBlock.firstActualMonth)?.firstActualMonth || "";
+
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
@@ -2413,42 +2404,32 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                       companies={commissioningCompanyOptions}
                     />
                   </div>
-                  <PageContextLine>Financial years are grouped from April to March. Commissioning is the first month with any sales transaction for that outlet ID. Sales start is the first later month from which sales continue in every actual month.</PageContextLine>
-                  {commissioningData.map((fyBlock) => {
-                    const commissioned = commissioningCompanyFilter === "all"
-                      ? fyBlock.commissioned
-                      : fyBlock.commissioned.filter((row) => (row.company || "").toString().trim().toUpperCase() === commissioningCompanyFilter);
-                    const salesStarted = commissioningCompanyFilter === "all"
-                      ? fyBlock.salesStarted
-                      : fyBlock.salesStarted.filter((row) => (row.company || "").toString().trim().toUpperCase() === commissioningCompanyFilter);
-                    const commissionedSummary = commissioningCompanyFilter === "all"
-                      ? fyBlock.commissionedSummary
-                      : fyBlock.commissionedSummary.filter((row) => row.company === commissioningCompanyFilter);
-                    const salesStartedSummary = commissioningCompanyFilter === "all"
-                      ? fyBlock.salesStartedSummary
-                      : fyBlock.salesStartedSummary.filter((row) => row.company === commissioningCompanyFilter);
-
-                    if (!commissioned.length && !salesStarted.length) return null;
-
-                    return (
+                  <PageContextLine>
+                    Financial years are grouped from April to March. Commissioning is counted only when an outlet's first positive sales month comes after the loaded dataset already has prior history.
+                  </PageContextLine>
+                  {!filteredCommissioningBlocks.length ? (
+                    <div style={{ marginTop: 12, padding: 14, background: "#fff", borderRadius: 8, color: "#64748B", boxShadow: "0 1px 2px rgba(2,6,23,0.04)" }}>
+                      No provable commissioning from the loaded data{firstActualMonth ? ` because history starts at ${formatMonth(firstActualMonth)}` : ""}. Add earlier months or a true commissioning-date field to calculate this reliably.
+                    </div>
+                  ) : filteredCommissioningBlocks.map((fyBlock) => (
                     <div key={fyBlock.fiscalYear} style={{ marginTop: 18 }}>
                       <h4 style={{ margin: "0 0 8px 0" }}>FY {fyBlock.fiscalYear}</h4>
-                      <CountSummaryTable rows={commissionedSummary} label="Commissioned Outlets" />
+                      <CountSummaryTable rows={fyBlock.commissionedSummary} label="Commissioned Outlets" />
                       <CommissioningTable
-                        rows={commissioned}
+                        rows={fyBlock.commissioned}
                         label="Commissioning Details"
                         monthLabel="salesStartMonth"
                         trailingLabel="Sales start"
                       />
-                      <CountSummaryTable rows={salesStartedSummary} label="Sales Started Outlets" />
+                      <CountSummaryTable rows={fyBlock.salesStartedSummary} label="Sales Started Outlets" />
                       <CommissioningTable
-                        rows={salesStarted}
+                        rows={fyBlock.salesStarted}
                         label="Sales Start Details"
                         monthLabel="commissionedMonth"
                         trailingLabel="Commissioned"
                       />
                     </div>
-                  )})}
+                  ))}
                 </div>
               );
             }
