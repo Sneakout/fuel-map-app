@@ -47,6 +47,7 @@ const ANALYSIS_TABS = [
   { index: 10, label: "Projection", title: "Next month sales and market share projection", tone: "violet" },
   { index: 11, label: "Commissioning", title: "Commissioned outlets and sales starts by financial year", tone: "cyan" },
 ];
+const HIDDEN_ANALYSIS_TABS = new Set([10, 11]);
 
 /* ---------- global styles to ensure full-height map and tooltip layout ---------- */
 
@@ -1059,6 +1060,13 @@ const [latestMonth, setLatestMonth] = useState(() => {
   const [marketShareScope, setMarketShareScope] = useState("industry");
   const [growthCompanyFilter, setGrowthCompanyFilter] = useState("all");
   const [commissioningCompanyFilter, setCommissioningCompanyFilter] = useState("all");
+
+  useEffect(() => {
+    if (HIDDEN_ANALYSIS_TABS.has(pageIndex)) {
+      setPageIndex(6);
+    }
+  }, [pageIndex]);
+
   // safe memoized cumulative sums for currently selected RO
 const cumulativeSums = useMemo(() => {
   if (!selected) return null;
@@ -2250,6 +2258,7 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
           {/* Buttons visible when NO RO is selected */}
           <div className="analysis-tabs" role="tablist" aria-label="Analysis views">
             {ANALYSIS_TABS.map((tab) => {
+              if (HIDDEN_ANALYSIS_TABS.has(tab.index)) return null;
               const active = pageIndex === tab.index;
               return (
                 <button
