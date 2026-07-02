@@ -277,12 +277,14 @@ function normalizeOutletId(value, fallback = "") {
 function normalizeStationRow(r, i = 0) {
   const msRaw = (r.ms ?? "").toString().trim();
   const hsdRaw = (r.hsd ?? "").toString().trim();
+  const classOfMarket = (r.class_of_market || r.classOfMarket || r["class of market"] || "").toString().trim().toUpperCase();
   return {
     month: (r.month || r.MONTH || "").toString().trim(),
     outlet_id: normalizeOutletId(r.outlet_id || r.id, `row-${i}`),
     name: (r.name || r.NAME || "").toString().trim(),
     trading_area: (r.trading_area || r.tradingArea || r.area || "").toString().trim(),
     company: canonicalCompanyName(r.company || r.brand || ""),
+    class_of_market: classOfMarket,
     lat: r.lat,
     lng: r.lng,
     hasCurrentValue: msRaw !== "" || hsdRaw !== "",
@@ -800,6 +802,32 @@ function CompanyFilterSelector({ value, onChange, companies }) {
   );
 }
 
+function ClassOfMarketSelector({ value, onChange, classes }) {
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <label style={{ color: "#64748B", fontSize: 13, fontWeight: 600 }}>Class</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: "1px solid #E6EEF3",
+          background: "#fff",
+          fontSize: 13,
+        }}
+      >
+        <option value="all">All classes</option>
+        {classes.map((className) => (
+          <option key={className} value={className}>
+            {className}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 function CountSummaryTable({ rows, label }) {
   return (
     <div style={{ marginTop: 10 }}>
@@ -1059,6 +1087,7 @@ const [latestMonth, setLatestMonth] = useState(() => {
   const [pageIndex, setPageIndex] = useState(0);
   const [iocLossRankBy, setIocLossRankBy] = useState("share");
   const [marketShareScope, setMarketShareScope] = useState("industry");
+  const [classOfMarketFilter, setClassOfMarketFilter] = useState("all");
   const [growthCompanyFilter, setGrowthCompanyFilter] = useState("all");
   const [topCompanyFilter, setTopCompanyFilter] = useState("all");
   const [commissioningCompanyFilter, setCommissioningCompanyFilter] = useState("all");
@@ -1406,6 +1435,8 @@ function selectSuggestion(sug) {
         id,
         name: metaRow.name || "",
         company: (metaRow.company || "").toString().trim(),
+        class_of_market: (metaRow.class_of_market || "").toString().trim().toUpperCase(),
+        class_of_market_norm: (metaRow.class_of_market || "").toString().trim().toUpperCase(),
         trading_area: trading_area_raw,
         trading_area_norm: trading_area_raw.toLowerCase(),
         lat: Number(metaRow.lat) || 0,
@@ -2305,27 +2336,42 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 ]).filter(Boolean)
               )
             ).sort();
+            const classOfMarketOptions = Array.from(
+              new Set(
+                stations
+                  .map((station) => (station.class_of_market || "").toString().trim().toUpperCase())
+                  .filter(Boolean)
+              )
+            ).sort();
+            const filteredStationsByClass = classOfMarketFilter === "all"
+              ? stations
+              : stations.filter((station) => (station.class_of_market || "").toString().trim().toUpperCase() === classOfMarketFilter);
 
             if (pageIndex === 12) {
+              const filteredMonthlyMS = buildMonthlyGrowthRowsMS(filteredStationsByClass);
+              const filteredMonthlyHSD = buildMonthlyGrowthRowsHSD(filteredStationsByClass);
               const topCompanyOptions = Array.from(
                 new Set(
-                  [...monthlyMS, ...monthlyHSD]
+                  [...filteredMonthlyMS, ...filteredMonthlyHSD]
                     .map((row) => (row.company || "").toString().trim().toUpperCase())
                     .filter(Boolean)
                 )
               ).sort();
+              const activeTopCompanyFilter = topCompanyFilter === "all" || topCompanyOptions.includes(topCompanyFilter)
+                ? topCompanyFilter
+                : "all";
 
-              const topRowsMS = (topCompanyFilter === "all"
-                ? monthlyMS
-                : monthlyMS.filter((row) => (row.company || "").toString().trim().toUpperCase() === topCompanyFilter)
+              const topRowsMS = (activeTopCompanyFilter === "all"
+                ? filteredMonthlyMS
+                : filteredMonthlyMS.filter((row) => (row.company || "").toString().trim().toUpperCase() === activeTopCompanyFilter)
               )
                 .filter((row) => Number(row.thisYear || 0) > 0)
                 .sort((a, b) => Number(b.thisYear || 0) - Number(a.thisYear || 0))
                 .slice(0, 20);
 
-              const topRowsHSD = (topCompanyFilter === "all"
-                ? monthlyHSD
-                : monthlyHSD.filter((row) => (row.company || "").toString().trim().toUpperCase() === topCompanyFilter)
+              const topRowsHSD = (activeTopCompanyFilter === "all"
+                ? filteredMonthlyHSD
+                : filteredMonthlyHSD.filter((row) => (row.company || "").toString().trim().toUpperCase() === activeTopCompanyFilter)
               )
                 .filter((row) => Number(row.thisYear || 0) > 0)
                 .sort((a, b) => Number(b.thisYear || 0) - Number(a.thisYear || 0))
@@ -2335,11 +2381,18 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                     <h3 style={{ margin: 0 }}>Top Outlets</h3>
-                    <CompanyFilterSelector
-                      value={topCompanyFilter}
-                      onChange={setTopCompanyFilter}
-                      companies={topCompanyOptions}
-                    />
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <ClassOfMarketSelector
+                        value={classOfMarketFilter}
+                        onChange={setClassOfMarketFilter}
+                        classes={classOfMarketOptions}
+                      />
+                      <CompanyFilterSelector
+                        value={activeTopCompanyFilter}
+                        onChange={setTopCompanyFilter}
+                        companies={topCompanyOptions}
+                      />
+                    </div>
                   </div>
                   <PageContextLine>{formatMonth(latestMonth)}</PageContextLine>
                   <GrowthTable rows={topRowsMS} label="Top 20 MS Outlets" />
@@ -2350,39 +2403,64 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
 
             // Decide which page to show
             if (pageIndex === 6) {
+              const msMonthlyFiltered  = marketShareRowsAllMonthly_MS(filteredStationsByClass, marketShareScope);
+              const hsdMonthlyFiltered = marketShareRowsAllMonthly_HSD(filteredStationsByClass, marketShareScope);
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                     <h3 style={{ margin: 0 }}>Market Share</h3>
-                    <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <ClassOfMarketSelector
+                        value={classOfMarketFilter}
+                        onChange={setClassOfMarketFilter}
+                        classes={classOfMarketOptions}
+                      />
+                      <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
+                    </div>
                   </div>
                   <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • ${formatMonth(latestMonth)}`}</PageContextLine>
-                  <MarketShareTable rows={msMonthly}  label="MS by Company" />
-                  <MarketShareTable rows={hsdMonthly} label="HSD by Company" />
+                  <MarketShareTable rows={msMonthlyFiltered}  label="MS by Company" />
+                  <MarketShareTable rows={hsdMonthlyFiltered} label="HSD by Company" />
                 </div>
               );
             }
             if (pageIndex === 7) {
+              const msCumFiltered  = marketShareRowsAllCumulative_MS(filteredStationsByClass, startMonth, latestMonth, marketShareScope);
+              const hsdCumFiltered = marketShareRowsAllCumulative_HSD(filteredStationsByClass, startMonth, latestMonth, marketShareScope);
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                     <h3 style={{ margin: 0 }}>Cumulative Market Share</h3>
-                    <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <ClassOfMarketSelector
+                        value={classOfMarketFilter}
+                        onChange={setClassOfMarketFilter}
+                        classes={classOfMarketOptions}
+                      />
+                      <MarketShareScopeSelector value={marketShareScope} onChange={setMarketShareScope} />
+                    </div>
                   </div>
                   <PageContextLine>{`${marketShareScope === "psu" ? "PSU" : "Industry"} • Apr to ${formatMonth(latestMonth)}`}</PageContextLine>
-                  <MarketShareTable rows={msCum}  label="MS by Company" />
-                  <MarketShareTable rows={hsdCum} label="HSD by Company" />
+                  <MarketShareTable rows={msCumFiltered}  label="MS by Company" />
+                  <MarketShareTable rows={hsdCumFiltered} label="HSD by Company" />
                 </div>
               );
             }
             if (pageIndex === 8) {
-              const losingMonthMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "monthly", rankBy: iocLossRankBy });
-              const losingMonthHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "monthly", rankBy: iocLossRankBy });
+              const losingMonthMS = buildIOCLossTradingAreaRows(filteredStationsByClass, { fuel: "ms", mode: "monthly", rankBy: iocLossRankBy });
+              const losingMonthHSD = buildIOCLossTradingAreaRows(filteredStationsByClass, { fuel: "hsd", mode: "monthly", rankBy: iocLossRankBy });
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                     <h3 style={{ margin: 0 }}>IOC Losing Trading Areas</h3>
-                    <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <ClassOfMarketSelector
+                        value={classOfMarketFilter}
+                        onChange={setClassOfMarketFilter}
+                        classes={classOfMarketOptions}
+                      />
+                      <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
+                    </div>
                   </div>
                   <PageContextLine>{`${formatMonth(latestMonth)} • Ranked by ${iocLossRankBy === "volume" ? "volume loss" : "market share loss"}`}</PageContextLine>
                   <TradingAreaLossTable rows={losingMonthMS} label="MS" onAreaSelect={(row) => openTradingAreaAnalysis(row, 8)} />
@@ -2391,13 +2469,20 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               );
             }
             if (pageIndex === 9) {
-              const losingCumMS = buildIOCLossTradingAreaRows(stations, { fuel: "ms", mode: "cumulative", startMonth, endMonth: latestMonth, rankBy: iocLossRankBy });
-              const losingCumHSD = buildIOCLossTradingAreaRows(stations, { fuel: "hsd", mode: "cumulative", startMonth, endMonth: latestMonth, rankBy: iocLossRankBy });
+              const losingCumMS = buildIOCLossTradingAreaRows(filteredStationsByClass, { fuel: "ms", mode: "cumulative", startMonth, endMonth: latestMonth, rankBy: iocLossRankBy });
+              const losingCumHSD = buildIOCLossTradingAreaRows(filteredStationsByClass, { fuel: "hsd", mode: "cumulative", startMonth, endMonth: latestMonth, rankBy: iocLossRankBy });
               return (
                 <div style={{ marginTop: 14 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                     <h3 style={{ margin: 0 }}>IOC Losing Trading Areas</h3>
-                    <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
+                    <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                      <ClassOfMarketSelector
+                        value={classOfMarketFilter}
+                        onChange={setClassOfMarketFilter}
+                        classes={classOfMarketOptions}
+                      />
+                      <LossRankingSelector value={iocLossRankBy} onChange={setIocLossRankBy} />
+                    </div>
                   </div>
                   <PageContextLine>{`Apr to ${formatMonth(latestMonth)} • Ranked by ${iocLossRankBy === "volume" ? "volume loss" : "market share loss"}`}</PageContextLine>
                   <TradingAreaLossTable rows={losingCumMS} label="MS" onAreaSelect={(row) => openTradingAreaAnalysis(row, 9)} />
@@ -2487,20 +2572,25 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               );
             }
 
+            const filteredMonthlyMS = buildMonthlyGrowthRowsMS(filteredStationsByClass);
+            const filteredMonthlyHSD = buildMonthlyGrowthRowsHSD(filteredStationsByClass);
+            const filteredCumMS = buildCumulativeGrowthRowsMS(filteredStationsByClass, startMonth, latestMonth);
+            const filteredCumHSD = buildCumulativeGrowthRowsHSD(filteredStationsByClass, startMonth, latestMonth);
+
             // Existing Growth pages (+M/+C/−M/−C)
             let rowsMS = [], rowsHSD = [];
             if (pageIndex === 2) {
-              rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth > 0), 'desc');
-              rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth > 0), 'desc');
+              rowsMS  = sortRowsByGrowth(filteredMonthlyMS.filter(r => r.growth > 0), 'desc');
+              rowsHSD = sortRowsByGrowth(filteredMonthlyHSD.filter(r => r.growth > 0), 'desc');
             } else if (pageIndex === 3) {
-              rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth > 0), 'desc');
-              rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth > 0), 'desc');
+              rowsMS  = sortRowsByGrowth(filteredCumMS.filter(r => r.growth > 0), 'desc');
+              rowsHSD = sortRowsByGrowth(filteredCumHSD.filter(r => r.growth > 0), 'desc');
             } else if (pageIndex === 4) {
-              rowsMS  = sortRowsByGrowth(monthlyMS.filter(r => r.growth < 0), 'asc');
-              rowsHSD = sortRowsByGrowth(monthlyHSD.filter(r => r.growth < 0), 'asc');
+              rowsMS  = sortRowsByGrowth(filteredMonthlyMS.filter(r => r.growth < 0), 'asc');
+              rowsHSD = sortRowsByGrowth(filteredMonthlyHSD.filter(r => r.growth < 0), 'asc');
             } else if (pageIndex === 5) {
-              rowsMS  = sortRowsByGrowth(cumMS.filter(r => r.growth < 0), 'asc');
-              rowsHSD = sortRowsByGrowth(cumHSD.filter(r => r.growth < 0), 'asc');
+              rowsMS  = sortRowsByGrowth(filteredCumMS.filter(r => r.growth < 0), 'asc');
+              rowsHSD = sortRowsByGrowth(filteredCumHSD.filter(r => r.growth < 0), 'asc');
             }
 
             const title =
@@ -2518,13 +2608,16 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                   .filter(Boolean)
               )
             ).sort();
+            const activeGrowthCompanyFilter = growthCompanyFilter === "all" || companyOptions.includes(growthCompanyFilter)
+              ? growthCompanyFilter
+              : "all";
 
-            const filteredRowsMS = growthCompanyFilter === "all"
+            const filteredRowsMS = activeGrowthCompanyFilter === "all"
               ? rowsMS
-              : rowsMS.filter((row) => (row.company || "").toString().trim().toUpperCase() === growthCompanyFilter);
-            const filteredRowsHSD = growthCompanyFilter === "all"
+              : rowsMS.filter((row) => (row.company || "").toString().trim().toUpperCase() === activeGrowthCompanyFilter);
+            const filteredRowsHSD = activeGrowthCompanyFilter === "all"
               ? rowsHSD
-              : rowsHSD.filter((row) => (row.company || "").toString().trim().toUpperCase() === growthCompanyFilter);
+              : rowsHSD.filter((row) => (row.company || "").toString().trim().toUpperCase() === activeGrowthCompanyFilter);
 
             const summaryMS  = summarizeByCompany(filteredRowsMS);
             const summaryHSD = summarizeByCompany(filteredRowsHSD);
@@ -2533,11 +2626,18 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
               <div style={{ marginTop: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
                   <h3 style={{ margin: 0 }}>{title}</h3>
-                  <CompanyFilterSelector
-                    value={growthCompanyFilter}
-                    onChange={setGrowthCompanyFilter}
-                    companies={companyOptions}
-                  />
+                  <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                    <ClassOfMarketSelector
+                      value={classOfMarketFilter}
+                      onChange={setClassOfMarketFilter}
+                      classes={classOfMarketOptions}
+                    />
+                    <CompanyFilterSelector
+                      value={activeGrowthCompanyFilter}
+                      onChange={setGrowthCompanyFilter}
+                      companies={companyOptions}
+                    />
+                  </div>
                 </div>
                 <PageContextLine>{context}</PageContextLine>
                 <SummaryTable rows={summaryMS}  label="MS Summary" />
