@@ -36,6 +36,7 @@ import { ShareChange } from "./components/analysisShared";
 const STORAGE_KEY = "fuelmap_records_v5";
 const LEGACY_STORAGE_KEYS = ["fuelmap_records_v4"];
 const ANALYSIS_TABS = [
+  { index: 12, label: "Top", title: "Highest selling outlets (selected month)", tone: "indigo" },
   { index: 2, label: "+M", title: "Positive growth (selected month)", tone: "sky" },
   { index: 3, label: "+C", title: "Positive growth (cumulative Apr → selected)", tone: "green" },
   { index: 4, label: "−M", title: "Negative growth (selected month)", tone: "red" },
@@ -1059,6 +1060,7 @@ const [latestMonth, setLatestMonth] = useState(() => {
   const [iocLossRankBy, setIocLossRankBy] = useState("share");
   const [marketShareScope, setMarketShareScope] = useState("industry");
   const [growthCompanyFilter, setGrowthCompanyFilter] = useState("all");
+  const [topCompanyFilter, setTopCompanyFilter] = useState("all");
   const [commissioningCompanyFilter, setCommissioningCompanyFilter] = useState("all");
 
   useEffect(() => {
@@ -2303,6 +2305,48 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
                 ]).filter(Boolean)
               )
             ).sort();
+
+            if (pageIndex === 12) {
+              const topCompanyOptions = Array.from(
+                new Set(
+                  [...monthlyMS, ...monthlyHSD]
+                    .map((row) => (row.company || "").toString().trim().toUpperCase())
+                    .filter(Boolean)
+                )
+              ).sort();
+
+              const topRowsMS = (topCompanyFilter === "all"
+                ? monthlyMS
+                : monthlyMS.filter((row) => (row.company || "").toString().trim().toUpperCase() === topCompanyFilter)
+              )
+                .filter((row) => Number(row.thisYear || 0) > 0)
+                .sort((a, b) => Number(b.thisYear || 0) - Number(a.thisYear || 0))
+                .slice(0, 20);
+
+              const topRowsHSD = (topCompanyFilter === "all"
+                ? monthlyHSD
+                : monthlyHSD.filter((row) => (row.company || "").toString().trim().toUpperCase() === topCompanyFilter)
+              )
+                .filter((row) => Number(row.thisYear || 0) > 0)
+                .sort((a, b) => Number(b.thisYear || 0) - Number(a.thisYear || 0))
+                .slice(0, 20);
+
+              return (
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                    <h3 style={{ margin: 0 }}>Top Outlets</h3>
+                    <CompanyFilterSelector
+                      value={topCompanyFilter}
+                      onChange={setTopCompanyFilter}
+                      companies={topCompanyOptions}
+                    />
+                  </div>
+                  <PageContextLine>{formatMonth(latestMonth)}</PageContextLine>
+                  <GrowthTable rows={topRowsMS} label="Top 20 MS Outlets" />
+                  <GrowthTable rows={topRowsHSD} label="Top 20 HSD Outlets" />
+                </div>
+              );
+            }
 
             // Decide which page to show
             if (pageIndex === 6) {
