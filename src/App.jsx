@@ -277,7 +277,14 @@ function normalizeOutletId(value, fallback = "") {
 function normalizeStationRow(r, i = 0) {
   const msRaw = (r.ms ?? "").toString().trim();
   const hsdRaw = (r.hsd ?? "").toString().trim();
-  const classOfMarket = (r.class_of_market || r.classOfMarket || r["class of market"] || "").toString().trim().toUpperCase();
+  const classOfMarket = (
+    r.class_of_market ||
+    r.classOfMarket ||
+    r.class_of__ ||
+    r["class of market"] ||
+    r["class_of_market "] ||
+    ""
+  ).toString().trim().toUpperCase();
   return {
     month: (r.month || r.MONTH || "").toString().trim(),
     outlet_id: normalizeOutletId(r.outlet_id || r.id, `row-${i}`),
@@ -805,7 +812,7 @@ function CompanyFilterSelector({ value, onChange, companies }) {
 function ClassOfMarketSelector({ value, onChange, classes }) {
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-      <label style={{ color: "#64748B", fontSize: 13, fontWeight: 600 }}>Class</label>
+      <label style={{ color: "#64748B", fontSize: 13, fontWeight: 600 }}>Class of market</label>
       <select
         value={value}
         onChange={(e) => onChange(e.target.value)}
@@ -2338,9 +2345,10 @@ onBlur={e => e.currentTarget.style.border = '1px solid transparent'}
             ).sort();
             const classOfMarketOptions = Array.from(
               new Set(
-                stations
-                  .map((station) => (station.class_of_market || "").toString().trim().toUpperCase())
-                  .filter(Boolean)
+                records
+                  .filter((record) => (record.month || "").toString().trim() === latestMonth)
+                  .map((record) => (record.class_of_market || "").toString().trim().toUpperCase())
+                  .filter((value) => value && value !== "#N/A")
               )
             ).sort();
             const filteredStationsByClass = classOfMarketFilter === "all"
